@@ -35,6 +35,12 @@ extern "C" {
 **/
 
 #ifdef __MSDOS__
+#ifndef DJGPP /* ...except for DOS32 mode of course */
+#define DOS16
+#endif
+#endif
+
+#ifdef DOS16
 
 typedef unsigned char EXIT_INT;
 typedef long INT;
@@ -101,19 +107,14 @@ typedef unsigned int UINT;
 
 #ifndef _WIN32
 #ifndef __MSDOS__
-#ifndef __CYGWIN__
 #define SGIO SGIO
 #endif
-#endif
-#endif
-
-#ifdef __CYGWIN__
-#define SPTX SPTX
 #endif
 
 #ifdef _WIN32
 #define WINASPI WINASPI
 #define SPTX SPTX
+// #define SGIO SGIO
 #endif
 
 #ifdef __MSDOS__
@@ -216,7 +217,6 @@ extern Scsi * newScsi(void);
 extern void scsiSetErr(Scsi *, FILE *);
 extern void scsiClose(Scsi *);
 extern int scsiOpen(Scsi *, char const *);
-extern int scsiReset(Scsi *);
 extern int scsiLimitSense(Scsi *, int);
 extern int scsiLimitSeconds(Scsi *, INT, INT);
 extern INT scsiSay(Scsi *, char const *, int, char *, INT, int);
@@ -252,7 +252,6 @@ extern Sptx * newSptx(int);
 extern void sptxSetErr(Sptx *, FILE *);
 extern void sptxClose(Sptx *);
 extern int sptxOpen(Sptx *, char const *);
-extern int sptxReset(Sptx *);
 extern int sptxLimitSense(Sptx *, int);
 extern int sptxLimitSeconds(Sptx *, int, int);
 extern int sptxSay(Sptx *, char const *, int, char *, int, int);

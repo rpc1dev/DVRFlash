@@ -9,8 +9,7 @@
 **                  you MUST ensure that structures are packed onto byte
 **                  alignments, and that C++ name mangling is turned off.
 **
-**  Notes  :        This file created using 4 spaces per tab.
-**  Notes 2:        Modified for dos32aspi proper compilation
+**  Notes:          This file created using 4 spaces per tab.
 **
 ******************************************************************************/
 
@@ -22,8 +21,16 @@
 */
 
 #ifdef _MSC_VER
+#define _PACK
+#endif //__MSC_VERP
+
+#ifdef DJGPP
+#define _PACK
+#endif //DJGPP
+
+#ifdef _PACK
 #pragma pack(1)
-#endif //__MSC_VER
+#endif //_PACK
 
 #ifdef __cplusplus
 extern "C" {
@@ -147,61 +154,17 @@ typedef struct                                  // Offset Structure for 6-byte C
     DWORD       SRB_Hdr_Rsvd;                   // 04/004 Reserved, MUST = 0
     BYTE        SRB_Target;                     // 08/008 Target's SCSI ID
     BYTE        SRB_Lun;                        // 09/009 Target's LUN number
-    DWORD       SRB_BufLen                      // 0A/010 Data Allocation Length
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;   
-    BYTE        SRB_SenseLen                    // 0E/014 Sense Allocation Length
-        #ifdef DJGPP
-        __attribute__ ((packed)) 
-        #endif
-        ;   
-    BYTE        FAR *SRB_BufPointer             // 0F/015 Data Buffer Pointer
-        #ifdef DJGPP 
-        __attribute__ ((packed))
-        #endif
-        ;   
-    DWORD       SRB_Rsvd1                       // 13/019 Reserved, MUST = 0
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;   
-    BYTE        SRB_CDBLen                      // 17/023 CDB Length = 6
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;   
-    BYTE        SRB_HaStat                      // 18/024 Host Adapter Status
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;   
-    BYTE        SRB_TargStat                    // 19/025 Target Status
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;   
-    VOID        FAR *SRB_PostProc               // 1A/026 Post routine
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;   
-    BYTE        SRB_Rsvd2[34]                   // 1E/030 Reserved, MUST = 0
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;
-    BYTE        CDBByte[6]                      // 40/064 SCSI CDB
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;   
-    BYTE        SenseArea6[SENSE_LEN]           // 46/070 Request Sense buffer
-        #ifdef DJGPP
-        __attribute__ ((packed))
-        #endif
-        ;   
+    DWORD       SRB_BufLen;                     // 0A/010 Data Allocation Length
+    BYTE        SRB_SenseLen;                   // 0E/014 Sense Allocation Length
+    BYTE        FAR *SRB_BufPointer;            // 0F/015 Data Buffer Pointer
+    DWORD       SRB_Rsvd1;                      // 13/019 Reserved, MUST = 0
+    BYTE        SRB_CDBLen;                     // 17/023 CDB Length = 6
+    BYTE        SRB_HaStat;                     // 18/024 Host Adapter Status
+    BYTE        SRB_TargStat;                   // 19/025 Target Status
+    VOID        FAR *SRB_PostProc;              // 1A/026 Post routine
+    BYTE        SRB_Rsvd2[34];                  // 1E/030 Reserved, MUST = 0
+    BYTE        CDBByte[6];                     // 40/064 SCSI CDB
+    BYTE        SenseArea6[SENSE_LEN];          // 46/070 Request Sense buffer
 }
 SRB_ExecSCSICmd6, *PSRB_ExecSCSICmd6, FAR *LPSRB_ExecSCSICmd6;
 
@@ -300,9 +263,9 @@ WORD FAR PASCAL GetASPISupportInfo( VOID );
 ** Restore compiler default packing and close off the C declarations.
 */
 
-#ifdef _MSC_VER
+#ifdef _PACK
 #pragma pack()
-#endif //_MSC_VER
+#endif //_PACK
 
 #ifdef __cplusplus
 }

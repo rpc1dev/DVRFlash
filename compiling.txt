@@ -1,0 +1,58 @@
+o Preliminary notes
+If DVRFlash did not contain too much sensitive information that we'd rather
+not get Pioneer to see, it would be ruled by the GNU Licence.
+Unfortunately, this can not be the case, SO DON'T SPREAD THE SOURCE!!!
+
+Now, there is really only one file that was crafted for this application,
+and it's DVRFlash.cpp
+getopt.c/getopt.h argument processing facility are standard GNU files and
+EVERY other file comes either directly or indirectly from the PLScsi API.
+
+The only modification we made to PLScsi's source was to replace the:
+  #include <nt-ddk/devioctl.h> /* needed by <ntddscsi.h> */
+  #include <nt-ddk/ntddscsi.h> /* SCSI_PASS_THROUGH_DIRECT ... */
+of sptx.cpp by:
+  #include "nt-ddk/devioctl.h" /* needed by <ntddscsi.h> */
+  #include "nt-ddk/ntddscsi.h" /* SCSI_PASS_THROUGH_DIRECT ... */
+and add both these NT DDK includes localy in out source directory.
+Those are MS copyrighted includes that are needed only for Win32 compilation
+if you want to do SPTI accesses (NT/2k/XP). 
+They are not meant to be distributed (which is why the official PLScsi distro
+ommits them) but providing them allows us:
+- not to have to install MS DDK to recompile DVRFlash for Win32 and
+- with a few modifications to the scsi.h header, to use cygwin instead of 
+  Visual Studio to recompile the application
+
+Once again, we will stress the fact that dues to PLScsi's versatility,
+DVRFlash is truly a "code once, run everywhere" application! ;)
+
+
+o Compiling for Win32
+DVRFlash supports both the SPTI and WinASPI modes when compiled on Win32. 
+The code was created using MS Visual Studio .NET 2003 (because it's a 
+convenient IDE) and the win32 version was compiled there too.
+If you have Visual Studio, just open the .sln file.
+It is also possible to compile the application using the freely available 
+cygwin with a very limited set of modifications.
+
+
+o Compiling for DOS
+DVRFlash supports the DOS ASPI mode (where you need to load a .SYS driver
+to provide ASPI access). All the files required to run DOS application with
+PLScsi including the Oak Generic ATAPI/ASPI driver are in the DOS directory.
+We are using the excellent (and freely available) DJGPP to compile for DOS.
+As the DOS version of PLScsi did not support the DOS/DPMI 32 bit mode, we 
+had to code our own version of PLScsi for DPMI.
+To recompile, make sure you have DJGPP installed, then change the paths in
+the dosmake.bat, and run it
+Using DPMI mode under DOS is a bit similar to using an application created
+by cygwin in Windows: just like the cygwin1.dll, you need to have cwsdpmi.exe
+in the same directory as your application (or run cwsdpim beforehand).
+For more information, see the DJGPP website: http://www.delorie.com/djgpp/
+
+
+o Compiling for Linux
+Just like PLScsi, DVRFlash is limited to use /dev/sg# device on Linux (for
+now, but this is being addressed by Pat). To get your drive as an SG device,
+read [1.5] of http://www.torque.net/sg/faq.htm
+To compile, use linmake... You know the drill ;)

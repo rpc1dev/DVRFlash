@@ -1,0 +1,17 @@
+v1.1 - XMas 03 Release
+New features:
+ o DVR-104 (and OEMs) support, including firmware downgrade
+ o DVR-107 support (untested)
+ o Linux version is now statically linked
+Fixes:
+ o Accessing non existent devices no longer causes DVRFlash to crash
+ o DVRFlash now properly processes user input in DOS/Linux
+ o ASPI mode can actually be used on Windows ;)
+Not Fixed:     
+ o The alleged 1 MB kernel flashing issue - It was NEVER broken!
+Known Bugs:
+ o DVR-103 is supported but apparently broken so DON'T USE IT!!!
+
+v1.0 - Original release
+Features:
+ o DVR-105/106 (and OEMs) support only

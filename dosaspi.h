@@ -37,7 +37,7 @@ typedef unsigned long   DWORD;  /* thirty-two bits, unsigned */
 
 /* Say how to send down an Srb. */
 
-//typedef void FAR ScsiMgr(BYTE FAR *); /* Not WORD FAR PASCAL */
+typedef void FAR ScsiMgr(BYTE FAR *); /* Not WORD FAR PASCAL */
 
 /* Name the struct (SRB_Cmd ... CDBByte) common to all ESC SRB's. */
 

@@ -1,5 +1,5 @@
 /**
- **  DVRFlash (based on Pisa/PLScsi)
+ **  DVRFlash (based on PLScsi)
  **
  **  Our own little replacement of the Pioneer DVR-1xx Flasher :þ
  **
@@ -12,11 +12,13 @@
 #include "getopt.h"
 #include "plscsi.h"
 
-// For the Sleep/usleep function
+// Define our msleep function
 #ifdef _WIN32
 #include <Windows.h>
+#define msleep(msecs) Sleep(msecs)
 #else
 #include <unistd.h>
+#define	msleep(msecs) usleep(1000*msecs)
 #endif
 
 #ifndef u8
@@ -31,8 +33,8 @@
 #define u32 unsigned long
 #endif
 
-#define SENSE_LENGTH 0xE /* offsetof SK ASC ASCQ < xE */
-#define SECONDS -1       /* negative means max */
+#define SENSE_LENGTH	0xE			/* offsetof SK ASC ASCQ < xE */
+#define SECONDS			-1			/* negative means max */
 
 #define FIRM_SIZE		0x00100000	// Standard Firmware size (Gen & Kern)
 #define MODE_SIZE		0x00000100	// Switch mode buffer size
@@ -45,13 +47,15 @@
 #define	FTYPE_KERNEL	1
 #define FTYPE_NORMAL	2
 
-// Universal 106 Key
+// Universal 106/107 Key
 #define UNIVERSAL_KEY	0x9A782361
 
 // Handy macro for exiting. xbuffer or fd = NULL is no problemo 
 // (except for lousy Visual C++, that will CRASH on fd = NULL!!!!)
 #define FREE_BUFFERS	{free(fbuffer[0]); free(fbuffer[1]); free(mbuffer); free(cdb);}
-#define ERR_EXIT		{FREE_BUFFERS; if (fd != NULL) fclose(fd); scsiClose(scsi); exit(1);}
+#define ERR_EXIT		{FREE_BUFFERS; if (fd != NULL) fclose(fd); scsiClose(scsi); fflush(stdin); exit(1);}
+// Fixed 1.1: The infamous Linux/DOS stdin fix
+#define FLUSHER			{while(getchar() != 0x0A);}
 
 // Drive indentification
 typedef struct
@@ -73,8 +77,12 @@ typedef struct
 } Extra_ID;
 
 // Global variables
-int opt_verbose = 0;
-int opt_debug   = 0;
+int  opt_verbose = 0;
+int  opt_debug   = 0;
+int  stat        = 0;
+u8   *cdb        = NULL;
+Scsi *scsi;
+u32  seed        = 0;	// For the 104 downgrade
 
 /* Print the diclaimer */
 int printDisclaimer()
@@ -101,8 +109,10 @@ int printDisclaimer()
 	puts("BY ANSWERING THE FOLLOWING QUESTION:");
 	puts("");
 	puts("Do you understand and agree to the statement above (y/n)?");
-	fflush(stdin);
-	scanf("%c",&c);
+        fflush(stdin);
+
+	c = (char) getchar();
+	FLUSHER;
 	if ((c!='y') && (c!='Y'))
 	{
 		fprintf(stderr, "Operation cancelled by user.\n");
@@ -112,7 +122,7 @@ int printDisclaimer()
 	return 0;
 }
 
-/* The handy ones IN BIG ENDIAN MODE NOW!!!*/
+/* The handy ones, IN BIG ENDIAN MODE THIS TIME!!!*/
 u32 readlong(u8* buffer, u32 addr)
 {
 	return ((((u32)buffer[addr+0])<<24) + (((u32)buffer[addr+1])<<16) +
@@ -125,17 +135,6 @@ void writelong(u8* buffer, u32 addr, u32 value)
 	buffer[addr+1] = (u8)(value>>16);
 	buffer[addr+2] = (u8)(value>>8);
 	buffer[addr+3] = (u8)value;
-}
-
-
-/* It's easy to recognise which OSes never planned for multitasking... */
-void msleep(int msecs)
-{	// Can't respect conventions Bill?
-#ifdef _WIN32
-		Sleep(msecs);
-#else
-		usleep(1000*msecs);
-#endif
 }
 
 /* Display a nice countdown */
@@ -159,6 +158,7 @@ void countdown(unsigned int secs)
 }
 
 /* Print Sense status and errors */
+// FIXME // Seems to crash if no bytes were actually transfered on previous command
 u32 getSense(Scsi *scsi, char* errmsg = NULL)
 {
 	static char sense[20];
@@ -203,6 +203,147 @@ void progressBar(float current = 0.0, float max = 100.0)
 	}
 }
 
+// We could probably use macros, but it's fast enough as it is
+u8  pseudoRandom()
+{
+	seed = ((((seed&0xFFFF)*0x41C6) + ((seed>>16)*0x4E6D))<<16) + ((seed&0xFFFF)*0x4E6D) + 0x3039;
+	return ((u8)(seed>>16));
+}
+
+u8  pseudoRandom2()
+{
+	seed = ((((seed&0xFFFF)*0x41C6) + ((seed>>16)*0x4E6D))<<16) + ((seed&0xFFFF)*0x4E6D) + 0x3039;
+	return ((u8)(((seed>>16)&0x7FFF)%0x100));
+}
+
+
+/* Enable DVR-103/104 downgrade */
+int Downgrade()
+{
+	u8*	dbuffer		= NULL;
+	int	i			= 0;
+	u32 s			= 0;
+	int	match		= 0;
+
+	if (opt_verbose)
+		printf("  DVR-103/104 downgrade:\n"); 
+
+	if ( (dbuffer = (u8*) calloc(0x400, 1)) == NULL )
+	{
+		fprintf (stderr, "    Could not allocate downgrade buffer\n");
+        return -1;
+	}
+
+	// 3B 01 F3 00 00 00 00 00 00 00 - Reset key
+	memset(cdb,0x00,MAX_CDB_SIZE);
+
+	cdb[0] = 0x3B;	// Write Buffer
+	cdb[1] = 0x01;
+	cdb[2] = 0xF3;
+
+	stat = scsiSay(scsi, (char*) cdb, 10, (char*) dbuffer, 0x00, X0_DATA_NOT);
+	if (stat)
+	{	
+		getSense(scsi, "    Unlock - Reset");
+		free (dbuffer);
+		return -1;
+	}
+
+	// 3C 01 F2 00 00 00 00 04 00 00 - Read pseudorandom data
+    memset(cdb,0x00,MAX_CDB_SIZE);
+
+	cdb[0] = 0x3C;	// Read Buffer
+	cdb[1] = 0x01;
+	cdb[2] = 0xF2;
+	cdb[7] = 0x04;	// Retreive $400 bytes of data, including the key
+
+	stat = scsiSay(scsi, (char*) cdb, 10, (char*) dbuffer, 0x400, X1_DATA_IN);
+	if (stat)
+	{	// Stat has to be right this time
+		getSense(scsi, "    Read seeded data");
+		free (dbuffer);
+		return -1;
+	}
+
+	// Get a seed match on first 4 bytes. Eventhough we don't know it for sure, 
+	// there's a 99.9999% chance these first 4 bytes never get modified.
+	// Also, there is mathematically no chance that different seeds can generate
+	// the same starting 4 byte sequence, so we're pretty safe here too.
+	// Even if the worst should happen, running DVRFlash again should do the trick ;)
+ 
+	if (opt_verbose)
+		printf("    Attempting to find seed...\n");
+
+	// lookups rarely produce elegant code...
+	match = 0;
+	for (s=0; s<0x10000; s++)
+	{	// Try the 65536 possible seeds
+		seed = s;
+		for (i=0;i<4;i++)
+		{
+			if (dbuffer[i] != pseudoRandom())
+				break;
+			if (i == 3)
+				match = -1;
+		}
+		if (match)
+			break;
+	}
+
+	if (!match)
+	{
+		fprintf(stderr, "    Could not find seed!\n");
+		free (dbuffer);
+		return -1;
+	}
+	if (opt_verbose)
+		printf("    Found seed: %04X ;)\n", s);
+
+	// Generate the 1 extra pseudorandom value and fill response buffer with it
+	seed = s;
+	for (i=0; i<0x400; i++)
+	// We need to re-generate 0x400 pseudo random values to get to that one response
+		pseudoRandom();
+	// Now we can retreive the response/unlock value, and fill our buffer with it
+	i = pseudoRandom2() ^ 0xFF;
+	memset(dbuffer, i, 0x400);
+
+	// 3B 01 F2 00 00 00 00 01 00 00 - Write $100 bytes of junk
+	memset(cdb,0x00,MAX_CDB_SIZE);
+
+	cdb[0] = 0x3B;	// Write Buffer
+	cdb[1] = 0x01;
+	cdb[2] = 0xF2;
+	cdb[7] = 0x01;	
+
+	stat = scsiSay(scsi, (char*) cdb, 10, (char*) dbuffer, 0x100, X2_DATA_OUT);
+	if (stat)
+	{	
+		getSense(scsi, "    Unlock - Step 1");
+		free (dbuffer);
+		return -1;
+	}
+
+	// 3B 01 F2 00 00 00 00 04 00 00 - Unlock
+	memset(cdb,0x00,MAX_CDB_SIZE);
+
+	cdb[0] = 0x3B;	// Write Buffer
+	cdb[1] = 0x01;
+	cdb[2] = 0xF2;
+	cdb[7] = 0x04;	
+
+	stat = scsiSay(scsi, (char*) cdb, 10, (char*) dbuffer, 0x400, X2_DATA_OUT);
+	if (stat)
+	{	
+		getSense(scsi, "    Unlock - Step 2");
+		free (dbuffer);
+		return -1;
+	}
+
+	free (dbuffer);
+	return 0;
+}
+
 /* Here we go! */
 int main (int argc, char *argv[])
 {
@@ -211,8 +352,7 @@ int main (int argc, char *argv[])
 	int  ftype[2] = {FTYPE_UNDEFINED, FTYPE_UNDEFINED};
 	int  kern_id		= -1;
 	int  norm_id		= -1;
-	u8   *fbuffer[2], *mbuffer, *cdb;
-	Scsi *scsi; 
+	u8   *fbuffer[2], *mbuffer;
 
 	// ID variables
 	Drive_ID id;
@@ -226,41 +366,44 @@ int main (int argc, char *argv[])
 	int is_kernel		= 0;	// is drive in kernel mode?
 	int nb_firmwares	= 0;	// firmware file(s) provide 
 	int skip_disclaimer = 0;
+	int opt_reboot      = 0;    // FIXME // 103 device disappearance bug
 
 	// General purpose
 	char strGen[5];
 	int  i;
 	char c;
-	int  stat;
 	size_t read;
 	FILE *fd = NULL;
 
 /*
  * Init
  */
-	setbuf (stdin, NULL);
+	fflush(stdin);
 	fbuffer[0] = NULL;
 	fbuffer[1] = NULL;
 	mbuffer    = NULL;
 	cdb        = NULL;
 	scsi       = NULL;
 
-	while ((i = getopt (argc, argv, "bhfkvs")) != -1)
+	while ((i = getopt (argc, argv, "bhfkrsv")) != -1)
 		switch (i)
 	{
 		case 'v':		// Print verbose messages
 			opt_verbose = -1;
 			break;
-		case 'f':       // Force unscrambling
+		case 'f':       // Force flashing
 			opt_force++;
 			break;
-		case 'k':       // Force scrambling
+		case 'k':       // Kernel mode only
 			opt_kernel = -1;
 			break;
-		case 'b':       // Force scrambling
+		case 'b':       // Debug mode (don't flash!)
 			opt_debug = -1;
 			break;
-		case 's':
+		case 'r':		// FIXME // 103 device disappearance bug
+			opt_reboot = -1;
+			break;
+		case 's':		// Skip disclaimer
 			skip_disclaimer = -1;
 			break;
 		case 'h':
@@ -270,7 +413,7 @@ int main (int argc, char *argv[])
 	}
 
 	puts ("");
-	puts ("DVRFlash v1.0 : Pioneer DVR firmware flasher");
+	puts ("DVRFlash v1.1 : Pioneer DVR firmware flasher");
 	puts("Coded by Agent Smith in the year 2003 with a little help from >NIL:");
 	puts ("");
 
@@ -281,7 +424,6 @@ int main (int argc, char *argv[])
 		puts ("                -f : force flashing");
 		puts ("                -k : put drive in Kernel mode");
 		puts ("                -v : verbose");
-//		puts ("                -r : reset device);
 		puts ("");
 		exit (1);
 	}
@@ -291,18 +433,17 @@ int main (int argc, char *argv[])
 	if ((!skip_disclaimer) && (printDisclaimer()))
 		ERR_EXIT;
 
-	// Copy device name
-#ifdef SPTX
-	if ( (strlen(argv[optind]) != 2) || (argv[optind][0] < 'C') || 
-		 (argv[optind][0] > 'Z') || (argv[optind][1] != ':') )
-	{
-		fprintf(stderr, "Invalid device name. Device must be from C: to Z:\n");
-		ERR_EXIT;
-	}
-	strncpy (devname+4, argv[optind], 3);
-#else
-	strncpy (devname, argv[optind], 15);
-#endif
+	// Copy device name 
+	// Fixed 1.1 to allow both ASPI and SPTX on Windows
+	if ( (strlen(argv[optind]) == 2) && (argv[optind][0] >= 'C') && 
+		 (argv[optind][0] <= 'Z') && (argv[optind][1] == ':') )
+	// Someone is using a Windows drive letter, let's try the SPTX way
+	// NB, we could have used a #ifdef SPTX here, but the less #ifdef, the
+	// more portable the code
+		strncpy (devname+4, argv[optind], 3);
+	else
+		strncpy (devname, argv[optind], 15);
+
 	devname[15] = 0;
 	optind++;
 
@@ -373,8 +514,10 @@ int main (int argc, char *argv[])
 		ERR_EXIT;
 	}
 
-	(void) scsiLimitSense(scsi, SENSE_LENGTH);
-	(void) scsiLimitSeconds(scsi, SECONDS, 0);
+	scsiLimitSense(scsi, SENSE_LENGTH);
+	// Changed 1.1: Set a timeout on all commands
+	// scsiLimitSeconds(scsi, SECONDS, 0);
+	scsiLimitSeconds(scsi, 60, 0);
 
 /*
  * General Inquiry - Any device should answer that
@@ -386,7 +529,8 @@ int main (int argc, char *argv[])
 	stat = scsiSay(scsi, (char*) cdb, 6, (char*) mbuffer, 0x60, X1_DATA_IN);
 	if (stat < 0)
 	{	// negative stat indicates an error
-		getSense(scsi,"\nCould not get drive inquiry information");
+		// Fixed 1.1 - getsense() request caused a program crash on non existing devices
+		fprintf(stderr, "Could not open device %s\n", devname);
 		ERR_EXIT;
 	}
 
@@ -461,9 +605,9 @@ int main (int argc, char *argv[])
 /*
  * Is this a supported drive?
  */
-
 	if ( (strncmp(idx.Interface, "ATA ", 4)) || 
-		 ( ( idx.Generation != 4) && (idx.Generation != 6) ) )
+		 ( (idx.Generation != 1) && (idx.Generation != 3) && (idx.Generation != 4) && 
+		   (idx.Generation != 6) && (idx.Generation != 7) ) )
 	{
 		fprintf(stderr, "The %s is not supported by this utility - Aborting\n", id.Desc);
 		ERR_EXIT;
@@ -575,7 +719,7 @@ int main (int argc, char *argv[])
 				// Let's eject media while we're at it
 				cdb[0] = 0x1B;
 				cdb[4] = 0x02;
-				stat = scsiSay(scsi, (char*) cdb, 6, NULL, 0, X0_DATA_NOT);
+				scsiSay(scsi, (char*) cdb, 6, NULL, 0, X0_DATA_NOT);
 				ERR_EXIT;
 			}
 		}
@@ -583,9 +727,9 @@ int main (int argc, char *argv[])
 		// Better safe than sorry
 		if (opt_debug)
 			printf("!!! DEBUG MODE !!! ");
-		fflush(stdin);
 		puts("Are you sure you want to flash this drive (y/n)?");
-		scanf("%c",&c);
+		c = (char) getchar();
+		FLUSHER;
 		if ((c!='y') && (c!='Y'))
 		{
 			fprintf(stderr, "Operation cancelled by user.\n");
@@ -594,14 +738,31 @@ int main (int argc, char *argv[])
 		puts("");
 	}
 
-
 /*
  * Get the drive into kernel mode
  */
-	if ( ((nb_firmwares > 0) || opt_kernel) && (!is_kernel) )
+	if ( ((nb_firmwares > 0) || (opt_kernel)) && (!is_kernel) )
 	{
-		puts("Switching drive to Kernel mode:");
+		printf("Switching drive to Kernel mode:\n");
 
+		// Take care of the DVR-103/104 anti downgrade 
+		if ((idx.Generation == 1) || (idx.Generation == 3))
+		{
+			i = Downgrade();
+			switch (i)
+			{
+			case 0:	// Downgrade went fine
+				break;
+			case 1:
+				fprintf(stderr,"    Downgrade protection does not seem to exist on this drive ;)\n");
+				break;
+			default:
+				fprintf(stderr,"    Downgrade activation reported an error. Attempting to continue anyway.\n");
+				break;
+			}
+		}
+
+		// Send kernel command
 		memset(cdb,0x00,MAX_CDB_SIZE);
 
 		cdb[0] = 0x3B;	// Write Buffer
@@ -614,11 +775,21 @@ int main (int argc, char *argv[])
 		// Copy the Kernel data, including the key if required
 		switch(idx.Generation)
 		{
-		case 4:	// 105
+		case 1:	// DVR-103
+			strncpy((char*)mbuffer, "PIONEER DVR-S301",16);
+			break;
+		case 3:	// DVR-104
+			strncpy((char*)mbuffer, "PIONEER DVD-R104",16);
+			break;
+		case 4:	// DVR-105
 			strncpy((char*)mbuffer, "PIONEER  DVR-105",16);
 			break;
-		case 6:	// 106
+		case 6:	// DVR-106
 			strncpy((char*)mbuffer, "PIONEER  DVR-106",16);
+			writelong(mbuffer,0x10,UNIVERSAL_KEY);
+			break;
+		case 7:	// DVR-107
+			strncpy((char*)mbuffer, "PIONEER  DVR-107",16);
 			writelong(mbuffer,0x10,UNIVERSAL_KEY);
 			break;
 		default:
@@ -626,19 +797,33 @@ int main (int argc, char *argv[])
 			ERR_EXIT;
 			break;
 		}
-		
+
 		if (!opt_debug)
 		{
 			stat = scsiSay(scsi, (char*) cdb, 10, (char*) mbuffer, 0x100, X2_DATA_OUT);
 			if (stat)
 			{	// Stat has to be right this time
-				getSense(scsi,"Could not set to Kernel mode");
+				fprintf(stderr,"Could not set Kernel mode\n");
 				ERR_EXIT;
 			}
 		}
 
 		memset(cdb,0x00,MAX_CDB_SIZE);
 		memset(mbuffer,0x00,MODE_SIZE);
+
+		// FIXME // On Windows, the DVR-103 can disappear from the device list just 
+		//       // after switching to kernel mode - ouch!
+		if (idx.Generation == 1)
+		{
+            if (opt_reboot)
+			{
+				printf("Your drive should be in Kernel mode.\n");
+				printf("Please reboot your machine now and run DVRFlash again.\n\n");
+				ERR_EXIT;
+			}
+			// Try to add some delay
+			msleep(2000);
+		}
 
 		cdb[0] = 0x12;	// Inquiry
 		cdb[4] = 0x60;	// Retreive $60 bytes of inquiry
@@ -666,8 +851,8 @@ int main (int argc, char *argv[])
 			is_kernel = -1;
 		}
 		else
-		{
-			fprintf(stderr,"Could not set the drive to Kernel mode!\n\n");
+		{	
+			fprintf(stderr,"Could not set drive to Kernel mode!\n\n");
 			if (!opt_debug)
 				ERR_EXIT;
 		}
@@ -676,7 +861,7 @@ int main (int argc, char *argv[])
 /*
  * Flash the kernel
  */
-	if (kern_id != -1)
+	if ( (kern_id != -1) )
 	{
 		puts("Now sending the Kernel part...");
 		memset(cdb,0x00,MAX_CDB_SIZE);
@@ -722,9 +907,9 @@ int main (int argc, char *argv[])
 	}
 
 /*
- * Flash the general
+ * Flash the normal part
  */
-	if (norm_id != -1)
+	if ( (norm_id != -1) )
 	{
 		puts("Now sending the Normal part:");
 
@@ -757,11 +942,14 @@ int main (int argc, char *argv[])
 		}
 
 		progressBar(1.0, 1.0);
-		// For some reason we need to wait after the Normal data has been sent
-		puts("Please hold your breath for about 20 seconds...");
-		puts("");
 
-		// Send the flash command
+		if (idx.Generation >= 4)
+		{	// For some reason, on the 105/106/107 we need to wait after the Normal data has been sent
+			puts("Please hold your breath for about 30 seconds...");
+			puts("");
+		}
+
+		// Send the flash/restore to normal mode command
 		memset(cdb,0x00,MAX_CDB_SIZE);
 
 		cdb[0] = 0x3B;	// Write Buffer
@@ -774,11 +962,21 @@ int main (int argc, char *argv[])
 		// Copy the Kernel data, including the key if required
 		switch(idx.Generation)
 		{
-		case 4:	// 105
+		case 1:	// DVR-103
+			strncpy((char*)mbuffer, "PIONEER DVR-S301",16);
+			break;
+		case 3:	// DVR-104
+			strncpy((char*)mbuffer, "PIONEER DVD-R104",16);
+			break;
+		case 4:	// DVR-105
 			strncpy((char*)mbuffer, "PIONEER  DVR-105",16);
 			break;
-		case 6:	// 106
+		case 6:	// DVR-106
 			strncpy((char*)mbuffer, "PIONEER  DVR-106",16);
+			writelong(mbuffer,0x10,UNIVERSAL_KEY);
+			break;
+		case 7:	// DVR-107
+			strncpy((char*)mbuffer, "PIONEER  DVR-107",16);
 			writelong(mbuffer,0x10,UNIVERSAL_KEY);
 			break;
 		default:
@@ -832,12 +1030,12 @@ int main (int argc, char *argv[])
 			fprintf(stderr,"ERROR!!! Drive is still in Kernel mode!\n");
 		}
 		else
-			puts("Flashing operation successful ;)");
+			puts("Flashing operation successful ;)\n");
 	}
 
 	scsiClose(scsi);
-
 	FREE_BUFFERS;
+	fflush(NULL);
 
 	return 0;
 }

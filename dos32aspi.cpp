@@ -3,7 +3,7 @@
 **  Wednesday. October 15, 2003
 **
 **  Talk thru an Aspi connection of Microsoft DOS 
-**  using an ASPI library in 32 bit protected mode
+**  using an ASPI library in 32 bit protected mode.
 **
 **  Grep views include:
 **
@@ -127,7 +127,6 @@ DWORD loadLibrary(char const * name)
     DWORD result = NULL;
     __dpmi_regs stackedRp;
     __dpmi_regs * rp = &stackedRp;
-
     unsigned short handle = 0;
     char stackedChars[8 + 1];
     char * chars = &stackedChars[0];
@@ -207,11 +206,23 @@ DWORD loadLibrary(char const * name)
                 
         /* Allocate Conventional Memory Buffers */
         
-        if (CM_srb == NULL)
-            CM_srb = ((DWORD) __dpmi_allocate_dos_memory((CM_srbSize+15)>>4, &CM_srbSelector)<<16);
+        if ( (CM_srb == NULL) &&
+             ((CM_srb = ((DWORD) __dpmi_allocate_dos_memory((CM_srbSize+15)>>4, 
+              &CM_srbSelector)<<16)) == -1) )
+            {
+            CM_srb = NULL;
+            (void) fprintf(stderr, "// CM srb allocation failure.\n");
+            return NULL;
+            }
         
-        if (CM_Buffer == NULL)
-            CM_Buffer = ((DWORD) __dpmi_allocate_dos_memory((CM_BufSize+15)>>4, &CM_BufSelector)<<16);
+        if ( (CM_Buffer == NULL) &&
+             ((CM_Buffer = ((DWORD) __dpmi_allocate_dos_memory((CM_BufSize+15)>>4,
+              &CM_BufSelector)<<16)) == -1) )
+            {
+            CM_Buffer = NULL;
+            (void) fprintf(stderr, "// CM Buffer allocation failure.\n");
+            return NULL;
+            }
             
         }
 
@@ -230,7 +241,7 @@ int CallScsiMgr(BYTE* srb, FILE * fi = NULL)
     {
     __dpmi_regs r;
 
-    if ((srb == NULL) || (CM_srb == NULL)) return -1;
+    if ((srb == NULL) || (CM_srb == NULL) || (CM_Buffer == NULL)) return -1;
 
     SRB_ExecSCSICmd * es = (SRB_ExecSCSICmd*)srb;
 
@@ -305,7 +316,7 @@ int CallScsiMgr(BYTE* srb, FILE * fi = NULL)
 
 int GetFromScsiMgr (BYTE* srb, FILE * fi = NULL)
 {
-    if ((srb == NULL) || (CM_srb == NULL)) return -1;
+    if ((srb == NULL) || (CM_srb == NULL) || (CM_Buffer == NULL)) return -1;
 
     BYTE* BufPointerCopy = NULL;
     BYTE  SRB_Status = 0;
