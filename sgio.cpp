@@ -45,9 +45,9 @@
 #include "winsg.h"
 #else
 
+#include <unistd.h>     /* close ... */
 #include <fcntl.h>      /* open O_RDWR ... */
 #include <sys/ioctl.h>  /* ioctl ... */
-#include <unistd.h>     /* close ... */
 
 #include <scsi/sg.h>    /* SG_... sg_... */
 
@@ -115,7 +115,9 @@ Sgio * newSgio(void)
 
     sgio->theErrFile = stderr;
 
-    sgio->theOpenMode = O_RDWR; /* O_RDONLY often works */
+//  sgio->theOpenMode = O_RDWR; /* O_RDONLY often works */
+//  sgio->theOpenMode = O_RDONLY|O_NONBLOCK;
+    sgio->theOpenMode = O_NONBLOCK;
     sgio->theFileDescriptor = -1;
     sgio->theSgVersionNum = 0; /* 0 = unknown */
 

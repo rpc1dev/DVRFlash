@@ -15,7 +15,8 @@
 ** 0.4  25-MAY-2004     Authoring device are unmounted.
 ** 0.5  26-MAY-2004     Allow for path specifications (e.g. /Volumes/SomeCD or
 **                        /dev/disk0)
-** 0.6  29-MAY-2004     Corrected umounting too much volumes.
+** 0.6  29-MAY-2004     Corrected unmounting too much volumes.
+** 0.7  05-JUN-2004     Corrected stucSay() when direction is X0_DATA_NOT.
 ** 
 */
 

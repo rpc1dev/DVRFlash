@@ -20,9 +20,6 @@
 #include <stdlib.h> /* calloc ... */
 #include <string.h> /* memset ... */
 
-#define IOCTL_STORAGE_RESET_DEVICE            CTL_CODE(FILE_DEVICE_MASS_STORAGE, 0x0401, METHOD_BUFFERED, FILE_READ_ACCESS)
-
-
 /**
 **  Link with the *.c* of ../plscsi/.
 **/
@@ -49,8 +46,8 @@
 #define WIN32_EXTRA_LEAN WIN32_EXTRA_LEAN
 
 #include <windows.h> /* ULONG_PTR ... if from the Windows DDK */
-#include "nt-ddk/devioctl.h" /* needed by <ntddscsi.h> */
-#include "nt-ddk/ntddscsi.h" /* SCSI_PASS_THROUGH_DIRECT ... */
+#include <devioctl.h> /* needed by <ntddscsi.h> */
+#include <ntddscsi.h> /* SCSI_PASS_THROUGH_DIRECT ... */
 
 #define PAGE_SIZE 0x1000 /* x1000 = "Intel 386" page size per <ddk/ntddk.h> */
 
@@ -401,40 +398,6 @@ int sptxOpen(Sptx * sptx, char const * name)
     /* Otherwise succeed. */
 
     return 0;
-    }
-
-/**
-**  Reset an Scsi device through an Sptx connection.
-**/
-
-int sptxReset(Sptx * sptx)
-    {
-    if (sptx == NULL) return -1;
-    if (sptx->theHandle == INVALID_HANDLE_VALUE) return -1;
-
-     /* Fill the DeviceIoControl struct. */
-
-    int exitInt;
-
-    /* Speak thru DeviceIoControl. */
-
-    HANDLE hCreateFile = sptx->theHandle;
-    BOOL fDeviceIoControl = DeviceIoControl(hCreateFile, IOCTL_STORAGE_RESET_DEVICE,
-		NULL, 0,
-		NULL, 0,
-        NULL, NULL);
-
-    /* Complain of utter failure. */
-
-    if (!fDeviceIoControl)
-        {
-        exitInt = -1;
-        FILE * fi = sptx->theErrFile;
-        win_fperror(fi, "// sptxReset.DeviceIoControl");
-        }
-	else
-		exitInt = 0;
-    return exitInt;
     }
 
 /**

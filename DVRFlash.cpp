@@ -257,7 +257,7 @@ int Downgrade()
 	{	
 		getSense(scsi, "    Unlock - Reset");
 		free (dbuffer);
-		return -1;
+		return 1;	// 1.4: this probably means drive is not downgrade protected.
 	}
 
 	// 3C 01 F2 00 00 00 00 04 00 00 - Read pseudorandom data
@@ -353,7 +353,6 @@ int Downgrade()
 	}
 
 	free (dbuffer);
-	msleep(250);	// 1.4: add some delay
 	return 0;
 }
 
@@ -387,6 +386,27 @@ int SetKern(char* buffer, int generation)
 		break;
 	}
 	return 0;
+}
+
+
+
+/* 1.5: inquiry the drive up to 20 times until it reacts */
+void TickleDrive(Scsi *scsi)
+{
+int i;
+char cdb[6];
+char tmp[0x60];
+
+for (i = 0; i < 20; i++)
+	{
+	// just do something to make the drive react?.
+	memset(cdb,0x00,MAX_CDB_SIZE);
+	cdb[0] = 0x12;		// Inquiry
+	cdb[4] = sizeof(tmp);	// size
+	stat = scsiSay(scsi, (char*) cdb, 6, (char*) tmp, sizeof(tmp), X1_DATA_IN);
+	if (!stat) break;
+	msleep(100);	// drive still not reacting, wait 0.1s and retry
+	}
 }
 
 
@@ -459,7 +479,7 @@ int main (int argc, char *argv[])
 	}
 
 	puts ("");
-	puts ("DVRFlash v1.4 : Pioneer DVR firmware flasher");
+	puts ("DVRFlash v1.5 : Pioneer DVR firmware flasher");
 	puts("Coded by Agent Smith in the year 2003/4 with a little help from >NIL:");
 	puts ("");
 
@@ -762,8 +782,7 @@ int main (int argc, char *argv[])
 			ERR_EXIT;
 		}
 
-		// Check if a media is present
-		// But NOT with a DVR-103 drive, as this would prevent downgrade.
+		// Check if a media is present (if drive is NOT a DVR-103)
 		if (!is_kernel && (idx.Generation != 1))
 		{	// No way we can check this if we are already in Kernel
 			memset(cdb,0x00,MAX_CDB_SIZE);
@@ -779,6 +798,7 @@ int main (int argc, char *argv[])
 				scsiSay(scsi, (char*) cdb, 6, NULL, 0, X0_DATA_NOT);
 				ERR_EXIT;
 			}
+			TickleDrive(scsi);
 		}
 
 		// Better safe than sorry
@@ -819,7 +839,8 @@ int main (int argc, char *argv[])
 			}
 		}
 
-		msleep(1000); // v1.4: added some delay
+		// inquiry the drive until it reacts
+		TickleDrive(scsi);
 
 		// Send kernel command
 		memset(cdb,0x00,MAX_CDB_SIZE);

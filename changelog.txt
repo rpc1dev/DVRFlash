@@ -1,3 +1,9 @@
+v1.5 - yet another MacOS X release.
+New feature:
+ o None
+Fixes:
+ o New workaround for "Could not set Kernel mode" error.
+
 v1.4 - MacOS X & DVR-103 release.
 New feature:
  o Added DVR-103 support back, with some corrections.
