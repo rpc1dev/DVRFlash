@@ -38,6 +38,9 @@
 struct Scsi /* connection */
     {
     void *          theConnection;
+#ifdef STUC
+    Stuc *          theStuc;            /* MacOS X */
+#endif
 #ifdef SGIO
     Sgio *          theSgio;            /* Linux since kernel 2.4 */
 #endif
@@ -66,6 +69,9 @@ Scsi * newScsi(void)
     /* Say closed but allow open. */
 
     scsi->theConnection = NULL;
+#ifdef STUC
+    scsi->theStuc = newStuc();
+#endif
 #ifdef SGIO
     scsi->theSgio = newSgio();
 #endif
@@ -89,6 +95,9 @@ Scsi * newScsi(void)
 void scsiSetErr(Scsi * scsi, FILE * fi)
     {
     if (scsi == NULL) return;
+#ifdef STUC
+    stucSetErr(scsi->theStuc, fi);
+#endif
 #ifdef SGIO
     sgioSetErr(scsi->theSgio, fi);
 #endif
@@ -107,6 +116,9 @@ void scsiSetErr(Scsi * scsi, FILE * fi)
 void scsiClose(Scsi * scsi)
     {
     if (scsi == NULL) return;
+#ifdef STUC
+    stucClose(scsi->theStuc);
+#endif
 #ifdef SGIO
     sgioClose(scsi->theSgio);
 #endif
@@ -129,6 +141,13 @@ int scsiOpen(Scsi * scsi, char const * name)
     {
     if (scsi == NULL) return -1;
     scsi->theConnection = NULL;
+#ifdef STUC
+    if (stucOpen(scsi->theStuc, name) == 0)
+        {
+        scsi->theConnection = scsi->theStuc;
+        return 0;
+        }
+#endif
 #ifdef SGIO
     if (sgioOpen(scsi->theSgio, name) == 0)
         {
@@ -153,41 +172,6 @@ int scsiOpen(Scsi * scsi, char const * name)
     return -1;
     }
 
-
-/**
-**  Reset the Scsi device.
-**/
-
-int scsiReset(Scsi * scsi)
-    {
-    if (scsi == NULL) return -1;
-#ifdef SGIO
-/*    if (scsi->theConnection == scsi->theSgio)
-        {
-        int exitInt = sgioReset(scsi->theSgio);
-        return exitInt;
-        }
-*/
-#endif
-#ifdef XXXASPI
-/*
-    if (scsi->theConnection == scsi->theAspi)
-        {
-        int exitInt = aspiReset(scsi->theAspi);
-        return exitInt;
-        }
-*/
-#endif
-#ifdef SPTX
-    if (scsi->theConnection == scsi->theSptx)
-        {
-        int exitInt = sptxReset(scsi->theSptx);
-        return exitInt;
-        }
-#endif
-    return -1;
-    }
-
 /**
 **  Limit the count of sense bytes copied In by scsiSay.
 **
@@ -197,6 +181,13 @@ int scsiReset(Scsi * scsi)
 int scsiLimitSense(Scsi * scsi, int maxSenseLength)
     {
     if (scsi == NULL) return -1;
+#ifdef STUC
+    if (scsi->theConnection == scsi->theStuc)
+        {
+        int exitInt = stucLimitSense(scsi->theStuc, maxSenseLength);
+        return exitInt;
+        }
+#endif
 #ifdef SGIO
     if (scsi->theConnection == scsi->theSgio)
         {
@@ -232,6 +223,13 @@ int scsiLimitSense(Scsi * scsi, int maxSenseLength)
 int scsiLimitSeconds(Scsi * scsi, INT s, INT ns)
     {
     if (scsi == NULL) return -1;
+#ifdef STUC
+    if (scsi->theConnection == scsi->theStuc)
+        {
+        int exitInt = stucLimitSeconds(scsi->theStuc, s, ns);
+        return exitInt;
+        }
+#endif
 #ifdef SGIO
     if (scsi->theConnection == scsi->theSgio)
         {
@@ -277,6 +275,13 @@ INT scsiSay(Scsi * scsi,
         char const * cdbChars, int cdbLength, char * dataChars, INT maxLength, int direction)
     {
     if (scsi == NULL) return -1;
+#ifdef STUC
+    if (scsi->theConnection == scsi->theStuc)
+        {
+        int exitInt = stucSay(scsi->theStuc, cdbChars, cdbLength, dataChars, maxLength, direction);
+        return exitInt;
+        }
+#endif
 #ifdef SGIO
     if (scsi->theConnection == scsi->theSgio)
         {
@@ -311,6 +316,13 @@ INT scsiSay(Scsi * scsi,
 INT scsiGetLength(Scsi * scsi, INT elseLength)
     {
     if (scsi == NULL) return elseLength;
+#ifdef STUC
+    if (scsi->theConnection == scsi->theStuc)
+        {
+        int exitInt = stucGetLength(scsi->theStuc, elseLength);
+        return exitInt;
+        }
+#endif
 #ifdef SGIO
     if (scsi->theConnection == scsi->theSgio)
         {
@@ -350,6 +362,13 @@ INT scsiGetLength(Scsi * scsi, INT elseLength)
 int scsiGetSense(Scsi * scsi, char * chars, int charsLength, int elseLength)
     {
     if (scsi == NULL) return 0;
+#ifdef STUC
+    if (scsi->theConnection == scsi->theStuc)
+        {
+        int exitInt = stucGetSense(scsi->theStuc, chars, charsLength, elseLength);
+        return exitInt;
+        }
+#endif
 #ifdef SGIO
     if (scsi->theConnection == scsi->theSgio)
         {
@@ -389,6 +408,10 @@ int scsiReadName(Scsi * scsi, char * chars, int charsLength)
     if (scsi == NULL) return -1;
 
     int exitInt = 0;
+#ifdef STUC
+    exitInt = stucReadName(scsi->theStuc, chars, charsLength);
+    if (0 <= exitInt) return exitInt;
+#endif
 #ifdef SGIO
     exitInt = sgioReadName(scsi->theSgio, chars, charsLength);
     if (0 <= exitInt) return exitInt;
@@ -417,6 +440,10 @@ int scsiSwallowArg(Scsi * scsi, char const * arg)
     if (arg == NULL) return -1;
 
     int exitInt = -1;
+#ifdef STUC
+    int stucInt = stucSwallowArg(scsi->theStuc, arg);
+    if (0 <= stucInt) exitInt = 0;
+#endif
 #ifdef SGIO
     int sgioInt = sgioSwallowArg(scsi->theSgio, arg);
     if (0 <= sgioInt) exitInt = 0;

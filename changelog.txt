@@ -1,8 +1,15 @@
-v1.3 - MacOS X release
+v1.4 - MacOS X & DVR-103 release.
 New feature:
- o OS X support added. Must be compiled with -DMACOSX option (or use "osxmake").
-   Check pseudoplscsi.c for naming devices.
-   Tested on ATAPI, USB1.1, USB2 and FireWire transport on OS X.3.3.
+ o Added DVR-103 support back, with some corrections.
+   Works on MacOS X, but needs checking on Windows.
+Fixes:
+ o Workaround for "Could not set Kernel mode" error.
+ o Minor modifications to make "g++ -Wall" happy.
+
+v1.3 - "Adding MacOS X support" release
+New feature:
+ o OS X support added.
+Tested on ATAPI, USB1.1, USB2, parallel SCSI and FireWire on OS X.3.3.
 Fixes:
  o Test Unit Ready CDB length changed to 6 (was 12).
 

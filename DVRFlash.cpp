@@ -9,12 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#ifdef MACOSX
-#include "pseudoplscsi.h"
-#else
 #include "getopt.h"
 #include "plscsi.h"
-#endif
 
 // Define our msleep function
 #ifdef _WIN32
@@ -25,6 +21,12 @@
 #define	msleep(msecs) usleep(1000*msecs)
 #endif
 
+#if __APPLE__
+#include <inttypes.h>
+#define u8  uint8_t
+#define u16 uint16_t
+#define u32 uint32_t
+#else // ! __APPLE__
 #ifndef u8
 #define u8 unsigned char
 #endif
@@ -36,6 +38,7 @@
 #ifndef u32
 #define u32 unsigned long
 #endif
+#endif // __APPLE__
 
 #define SENSE_LENGTH	0xE			/* offsetof SK ASC ASCQ < xE */
 #define SECONDS			-1			/* negative means max */
@@ -187,7 +190,7 @@ char sense[20];
 /* Display a Progression Bar */
 void progressBar(float current = 0.0, float max = 100.0)
 {
-	static char c;	// We need this variable to keep its value between calls
+	static int c;	// We need this variable to keep its value between calls
 	// Progression bar
 	char percent[] = "|============|============|============|============|";
 	if (current == 0.0)
@@ -240,6 +243,7 @@ int Downgrade()
         return -1;
 	}
 
+
 	// 3B 01 F3 00 00 00 00 00 00 00 - Reset key
 	memset(cdb,0x00,MAX_CDB_SIZE);
 
@@ -247,7 +251,8 @@ int Downgrade()
 	cdb[1] = 0x01;
 	cdb[2] = 0xF3;
 
-	stat = scsiSay(scsi, (char*) cdb, 10, (char*) dbuffer, 0x00, X0_DATA_NOT);
+	// 1.4: Write buffer command HAS a data out phase, even an empty one!
+	stat = scsiSay(scsi, (char*) cdb, 10, (char*) dbuffer, 0x00, X2_DATA_OUT);
 	if (stat)
 	{	
 		getSense(scsi, "    Unlock - Reset");
@@ -256,14 +261,15 @@ int Downgrade()
 	}
 
 	// 3C 01 F2 00 00 00 00 04 00 00 - Read pseudorandom data
-    memset(cdb,0x00,MAX_CDB_SIZE);
+	memset(cdb,0x00,MAX_CDB_SIZE);
 
 	cdb[0] = 0x3C;	// Read Buffer
 	cdb[1] = 0x01;
 	cdb[2] = 0xF2;
-	cdb[7] = 0x04;	// Retreive $400 bytes of data, including the key
+	cdb[7] = 0x04;	// Retrieve $400 bytes of data, including the key
 
 	stat = scsiSay(scsi, (char*) cdb, 10, (char*) dbuffer, 0x400, X1_DATA_IN);
+
 	if (stat)
 	{	// Stat has to be right this time
 		getSense(scsi, "    Read seeded data");
@@ -347,6 +353,7 @@ int Downgrade()
 	}
 
 	free (dbuffer);
+	msleep(250);	// 1.4: add some delay
 	return 0;
 }
 
@@ -393,14 +400,12 @@ int main (int argc, char *argv[])
 	int  kern_id		= -1;
 	int  norm_id		= -1;
 	u8   *fbuffer[2], *mbuffer;
-	u32	 s				= 0xFFFFFFFF;
 
 	// ID variables
 	Drive_ID id;
 	Extra_ID idx;
 
 	// Flags
-	int firmware_type 	= -1;	// Undefined by default
 	int opt_error 		= 0;	// getopt
 	int opt_force       = 0;
 	int opt_kernel		= 0;	// Switch drive to kernel mode
@@ -454,7 +459,7 @@ int main (int argc, char *argv[])
 	}
 
 	puts ("");
-	puts ("DVRFlash v1.3 : Pioneer DVR firmware flasher");
+	puts ("DVRFlash v1.4 : Pioneer DVR firmware flasher");
 	puts("Coded by Agent Smith in the year 2003/4 with a little help from >NIL:");
 	puts ("");
 
@@ -474,7 +479,7 @@ int main (int argc, char *argv[])
 	if ((!skip_disclaimer) && (printDisclaimer()))
 		ERR_EXIT;
 
-    // New 1.2 - Display how we were called
+	// New 1.2 - Display how we were called
 	printf("Commandline:\n  ");
 	for (i=0; i<argc; i++)
 		printf("%s ", argv[i]);
@@ -508,7 +513,7 @@ int main (int argc, char *argv[])
 #endif
 	optind++;
 
-    // Copy firmware name(s)
+	// Copy firmware name(s)
 	for (i=0; i<(argc-optind); i++)
 	{	
 		strncpy (fname[i], argv[optind+i], 15);
@@ -757,15 +762,9 @@ int main (int argc, char *argv[])
 			ERR_EXIT;
 		}
 
-		// Check that the drive is not a 103 (unless superforce is being used)
-		if ((idx.Generation == 1) && (opt_force < 2))
-		{
-			fprintf(stderr,"The DVR-103 drive is not supported by this utility.\n");
-			ERR_EXIT;
-		}
-
 		// Check if a media is present
-		if (!is_kernel)
+		// But NOT with a DVR-103 drive, as this would prevent downgrade.
+		if (!is_kernel && (idx.Generation != 1))
 		{	// No way we can check this if we are already in Kernel
 			memset(cdb,0x00,MAX_CDB_SIZE);
 			// 1.3: cdb length must be 6 for TEST UNIT READY!
@@ -785,16 +784,13 @@ int main (int argc, char *argv[])
 		// Better safe than sorry
 		if (opt_debug)
 			printf("!!! DEBUG MODE !!! ");
-		if (idx.Generation != 1)
-		{	// v1.2: Skip the question if 103 drive (possible 103 fix)
-			puts("Are you sure you want to flash this drive (y/n)?");
-			c = (char) getchar();
-			FLUSHER;
-			if ((c!='y') && (c!='Y'))
-			{
-				fprintf(stderr, "Operation cancelled by user.\n");
-				ERR_EXIT;
-			}
+		puts("Are you sure you want to flash this drive (y/n)?");
+		c = (char) getchar();
+		FLUSHER;
+		if ((c!='y') && (c!='Y'))
+		{
+			fprintf(stderr, "Operation cancelled by user.\n");
+			ERR_EXIT;
 		}
 		puts("");
 	}
@@ -823,6 +819,8 @@ int main (int argc, char *argv[])
 			}
 		}
 
+		msleep(1000); // v1.4: added some delay
+
 		// Send kernel command
 		memset(cdb,0x00,MAX_CDB_SIZE);
 
@@ -841,7 +839,7 @@ int main (int argc, char *argv[])
 			stat = scsiSay(scsi, (char*) cdb, 10, (char*) mbuffer, 0x100, X2_DATA_OUT);
 			if (stat)
 			{	// Stat has to be right this time
-				fprintf(stderr,"Could not set Kernel mode\n");
+				getSense(scsi, "Could not set Kernel mode");
 				ERR_EXIT;
 			}
 		}
@@ -1034,7 +1032,7 @@ int main (int argc, char *argv[])
 		printf("  Description    - %s\n", id.Desc);
 		printf("  Firmware Rev.  - %s\n", id.Rev);
 		printf("  Firmware Date  - %s\n", id.Date);
-	    printf("  Manufacturer   - %s\n", id.Maker);
+		printf("  Manufacturer   - %s\n", id.Maker);
 
 		if ( (!strcmp(id.Date, "00/00/00")) && (!strcmp(id.Rev, "0000")) )
 		{

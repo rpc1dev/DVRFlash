@@ -35,12 +35,6 @@ extern "C" {
 **/
 
 #ifdef __MSDOS__
-#ifndef DJGPP /* ...except for DOS32 mode of course */
-#define DOS16
-#endif
-#endif
-
-#ifdef DOS16
 
 typedef unsigned char EXIT_INT;
 typedef long INT;
@@ -105,9 +99,15 @@ typedef unsigned int UINT;
 **  Choose which .cpp to link.
 **/
 
+#ifdef __APPLE__
+#define STUC STUC
+#endif
+
 #ifndef _WIN32
 #ifndef __MSDOS__
+#ifndef __APPLE__
 #define SGIO SGIO
+#endif
 #endif
 #endif
 
@@ -147,6 +147,7 @@ typedef struct Scsi Scsi;
 typedef struct ScsiCommandLine ScsiCommandLine;
 typedef struct Sgio Sgio;
 typedef struct Sptx Sptx;
+typedef struct Stuc Stuc;
 
 /**
 **  Link with "dosaspi.cpp" or "winaspi.cpp".
@@ -226,6 +227,24 @@ extern int scsiReadName(Scsi *, char *, int);
 extern int scsiSwallowArg(Scsi *, char const *);
 
 /**
+**  Link with "stuc.cpp".
+**/
+
+#ifdef STUC
+extern Stuc * newStuc(void);
+extern void stucSetErr(Stuc *, FILE *);
+extern void stucClose(Stuc *);
+extern int stucOpen(Stuc *, char const *);
+extern int stucLimitSense(Stuc *, int);
+extern int stucLimitSeconds(Stuc *, INT, INT);
+extern INT stucSay(Stuc *, char const *, int, char *, INT, int);
+extern INT stucGetLength(Stuc *, INT);
+extern int stucGetSense(Stuc *, char *, int, int);
+extern int stucReadName(Stuc *, char *, int);
+extern int stucSwallowArg(Stuc *, char const *);
+#endif
+
+/**
 **  Link with "sgio.cpp".
 **/
 
@@ -251,7 +270,6 @@ extern int sgioSwallowArg(Sgio *, char const *);
 extern Sptx * newSptx(int);
 extern void sptxSetErr(Sptx *, FILE *);
 extern void sptxClose(Sptx *);
-extern int sptxReset(Sptx * sptx);
 extern int sptxOpen(Sptx *, char const *);
 extern int sptxLimitSense(Sptx *, int);
 extern int sptxLimitSeconds(Sptx *, int, int);
