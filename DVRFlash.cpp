@@ -9,8 +9,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#ifdef MACOSX
+#include "pseudoplscsi.h"
+#else
 #include "getopt.h"
 #include "plscsi.h"
+#endif
 
 // Define our msleep function
 #ifdef _WIN32
@@ -76,13 +80,13 @@ typedef struct
 	char Kernel_Rev[5];
 } Extra_ID;
 
-// Global variables
-int			opt_verbose = 0;
-int			opt_debug   = 0;
-int			stat        = 0;
-u8			*cdb        = NULL;
-Scsi		*scsi;
-u32			seed        = 0;	// For the 104 downgrade
+// Global variables, set to static to avoid name confusion, e.g. with stat()
+static int	opt_verbose = 0;
+static int	opt_debug   = 0;
+static int	stat        = 0;
+static u8	*cdb        = NULL;
+static Scsi	*scsi;
+static u32	seed        = 0;	// For the 104 downgrade
 
 /* Print the diclaimer */
 int printDisclaimer()
@@ -383,7 +387,7 @@ int SetKern(char* buffer, int generation)
 /* Here we go! */
 int main (int argc, char *argv[])
 {
-	char devname[16] = "\\\\.\\I:";
+	char devname[31] = "\\\\.\\I:";
 	char fname[2][16];			// firmware name(s)
 	int  ftype[2] = {FTYPE_UNDEFINED, FTYPE_UNDEFINED};
 	int  kern_id		= -1;
@@ -450,7 +454,7 @@ int main (int argc, char *argv[])
 	}
 
 	puts ("");
-	puts ("DVRFlash v1.2 : Pioneer DVR firmware flasher");
+	puts ("DVRFlash v1.3 : Pioneer DVR firmware flasher");
 	puts("Coded by Agent Smith in the year 2003/4 with a little help from >NIL:");
 	puts ("");
 
@@ -479,6 +483,11 @@ int main (int argc, char *argv[])
 	// Copy device name 
 	// Fixed 1.1 to allow both ASPI and SPTX on Windows
 	// Fixed 1.2 - Some people don't know UPPER-f...ing-CASE!!!
+	// Fixed 1.3 - On MacOS X, drive is selected by INQUIRY string.
+#if MACOSX
+	strncpy(devname, argv[optind], 30);
+	devname[30] = 0;
+#else
 	if ( (strlen(argv[optind]) == 2) && (argv[optind][1] == ':') )
 	{	// Someone seems to be using a Windows drive letter, let's try the SPTX way
 		if ( (argv[optind][0] >= 'a') && (argv[optind][0] <= 'z') )
@@ -496,6 +505,7 @@ int main (int argc, char *argv[])
 		strncpy (devname, argv[optind], 15);
 
 	devname[15] = 0;
+#endif
 	optind++;
 
     // Copy firmware name(s)
@@ -575,7 +585,7 @@ int main (int argc, char *argv[])
  */
 	memset(cdb,0x00,MAX_CDB_SIZE);
 	cdb[0] = 0x12;	// Inquiry
-	cdb[4] = 0x60;	// Retreive $60 bytes of inquiry
+	cdb[4] = 0x60;	// Retrieve $60 bytes of inquiry
 
 	stat = scsiSay(scsi, (char*) cdb, 6, (char*) mbuffer, 0x60, X1_DATA_IN);
 	if (stat < 0)
@@ -602,7 +612,7 @@ int main (int argc, char *argv[])
 	}
 
 	printf("  Firmware Date  - %s\n", id.Date);
-    printf("  Manufacturer   - %s\n", id.Maker);
+	printf("  Manufacturer   - %s\n", id.Maker);
 
 	if ( (!strcmp(id.Date, "00/00/00")) && (!strcmp(id.Rev, "0000")) )
 	{
@@ -758,7 +768,8 @@ int main (int argc, char *argv[])
 		if (!is_kernel)
 		{	// No way we can check this if we are already in Kernel
 			memset(cdb,0x00,MAX_CDB_SIZE);
-			stat = scsiSay(scsi, (char*) cdb, 12, NULL, 0, X0_DATA_NOT);
+			// 1.3: cdb length must be 6 for TEST UNIT READY!
+			stat = scsiSay(scsi, (char*) cdb, 6, NULL, 0, X0_DATA_NOT);
 			// Sense must return Sense 02/3A/-- on Test Unit Ready
 			if ((!stat) || ((getSense(scsi) & 0xFFFF00) != 0x023A00))
 			{

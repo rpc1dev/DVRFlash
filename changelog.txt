@@ -1,3 +1,11 @@
+v1.3 - MacOS X release
+New feature:
+ o OS X support added. Must be compiled with -DMACOSX option (or use "osxmake").
+   Check pseudoplscsi.c for naming devices.
+   Tested on ATAPI, USB1.1, USB2 and FireWire transport on OS X.3.3.
+Fixes:
+ o Test Unit Ready CDB length changed to 6 (was 12).
+
 v1.2 - K12 Release
 New features:
  o DVR-K12 support
@@ -6,6 +14,7 @@ Fixes:
  o Uppercase Windows drive letter fix for the clueless user
  o Improper 'OEM' wording has been removed
  o 103 support is permanetly removed - not worth the trouble
+
 Known Bugs:
  o Microsoft apparently broke passthru access with Windows 2003 
    and Windows XP/SP2, therefore DVRFlash will not work on those
