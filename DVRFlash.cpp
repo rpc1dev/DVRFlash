@@ -45,6 +45,9 @@
 #define	FTYPE_KERNEL	1
 #define FTYPE_NORMAL	2
 
+// Universal 106 Key
+#define UNIVERSAL_KEY	0x9A782361
+
 // Handy macro for exiting. xbuffer or fd = NULL is no problemo 
 // (except for lousy Visual C++, that will CRASH on fd = NULL!!!!)
 #define FREE_BUFFERS	{free(fbuffer[0]); free(fbuffer[1]); free(mbuffer); free(cdb);}
@@ -57,30 +60,19 @@ typedef struct
 	char Rev[5];
 	char Date[9];
 	char Maker[10];
+} Drive_ID;
+
+typedef struct
+{
 	char Serial[17];
 	char Interface[5];
-	char Generation[5];
+	int  Generation;
 	char Kernel_Type[9];
 	char Normal_Type[9];
 	char Kernel_Rev[5];
-} Drive_ID;
+} Extra_ID;
 
-// Kernel Key ID struct
-typedef struct
-{
-	const char* dID;	// drive ID
-	const char* kID;	// kernel ID
-	const u32   key;	// key
-} keyID;
-
-keyID keyTable[] = {
-	{ "PIONEER DVD-RW  DVR-105 ", "PIONEER  DVR-105", 0 },
-	{ "PIONEER DVD-RW  DVR-106 ", "PIONEER  DVR-106", 0 },
-	{ "PIONEER DVD-RW  DVR-106D", "PIONEER  DVR-106", 0x5B6A8FE9},
-	{ "ASUS    DRW-0402P/D     ", "PIONEER  DVR-106", 0x2AD55699},
-};
-
-
+// Global variables
 int opt_verbose = 0;
 int opt_debug   = 0;
 
@@ -120,29 +112,19 @@ int printDisclaimer()
 	return 0;
 }
 
-/* The handy ones */
+/* The handy ones IN BIG ENDIAN MODE NOW!!!*/
 u32 readlong(u8* buffer, u32 addr)
 {
-	return ((((u32)buffer[addr+3])<<24) + (((u32)buffer[addr+2])<<16) +
-		(((u32)buffer[addr+1])<<8) + ((u32)buffer[addr]));
+	return ((((u32)buffer[addr+0])<<24) + (((u32)buffer[addr+1])<<16) +
+		(((u32)buffer[addr+2])<<8) + ((u32)buffer[addr+3]));
 }
 
 void writelong(u8* buffer, u32 addr, u32 value)
 {
-	buffer[addr] = (u8)value;
-	buffer[addr+1] = (u8)(value>>8);
-	buffer[addr+2] = (u8)(value>>16);
-	buffer[addr+3] = (u8)(value>>24);
-}
-
-/* Bye bye lousy associative C++ tables; hello good old sturdy C */
-int findKey(char* ID)
-{
-	int i;
-	for (i=0; i<(sizeof(keyTable)/sizeof(keyID)); i++)
-		if (!strcmp(ID, keyTable[i].dID))
-			return i;
-	return -1;
+	buffer[addr]   = (u8)(value>>24);
+	buffer[addr+1] = (u8)(value>>16);
+	buffer[addr+2] = (u8)(value>>8);
+	buffer[addr+3] = (u8)value;
 }
 
 
@@ -231,7 +213,10 @@ int main (int argc, char *argv[])
 	int  norm_id		= -1;
 	u8   *fbuffer[2], *mbuffer, *cdb;
 	Scsi *scsi; 
+
+	// ID variables
 	Drive_ID id;
+	Extra_ID idx;
 
 	// Flags
 	int firmware_type 	= -1;	// Undefined by default
@@ -243,9 +228,10 @@ int main (int argc, char *argv[])
 	int skip_disclaimer = 0;
 
 	// General purpose
-	int i;
+	char strGen[5];
+	int  i;
 	char c;
-	int stat;
+	int  stat;
 	size_t read;
 	FILE *fd = NULL;
 
@@ -284,7 +270,7 @@ int main (int argc, char *argv[])
 	}
 
 	puts ("");
-	puts ("DVRFlash v0.9e : Pioneer DVR firmware flasher");
+	puts ("DVRFlash v1.0 : Pioneer DVR firmware flasher");
 	puts("Coded by Agent Smith in the year 2003 with a little help from >NIL:");
 	puts ("");
 
@@ -300,12 +286,8 @@ int main (int argc, char *argv[])
 		exit (1);
 	}
 
-/*
- * TO_DO 
- * - Check for 103/104
- * - Better structure for Kernel mode data and add brute force for 106 key
- */
 
+	// Who wants a disclaimer?
 	if ((!skip_disclaimer) && (printDisclaimer()))
 		ERR_EXIT;
 
@@ -453,32 +435,37 @@ int main (int argc, char *argv[])
 		ERR_EXIT;
 	}
 
-	memcpy(id.Serial, mbuffer, 16);
-	memcpy(id.Interface, mbuffer+16, 4);
-	memcpy(id.Generation, mbuffer+20, 4);
-	memcpy(id.Kernel_Type, mbuffer+24, 8);
-	memcpy(id.Normal_Type, mbuffer+32, 8);
-	memcpy(id.Kernel_Rev, mbuffer+40, 4);
+	memset(&idx, 0, sizeof(idx));
+	memcpy(idx.Serial, mbuffer, 16);
+	memcpy(idx.Interface, mbuffer+16, 4);
+	memcpy(strGen, mbuffer+20, 4);
+	strGen[4] = 0;
+	idx.Generation = atoi(strGen);
+	memcpy(idx.Kernel_Type, mbuffer+24, 8);
+	memcpy(idx.Normal_Type, mbuffer+32, 8);
+	memcpy(idx.Kernel_Rev, mbuffer+40, 4);
 
 	if (opt_verbose)
 	{
 		printf("Additional Drive Information:\n");
 		if (!is_kernel)
-			printf("  Serial number  - %s\n", id.Serial);
-		printf("  Interface type - %s\n", id.Interface);
-		printf("  DVR generation - %s\n", id.Generation);
-		printf("  Kernel type    - %s\n", id.Kernel_Type);
+			printf("  Serial number  - %s\n", idx.Serial);
+		printf("  Interface type - %s\n", idx.Interface);
+		printf("  DVR generation - %04d\n", idx.Generation);
+		printf("  Kernel type    - %s\n", idx.Kernel_Type);
 		if (!is_kernel)
-			printf("  Normal type    - %s\n", id.Normal_Type);
-		printf("  Kernel version - %s\n\n", id.Kernel_Rev);
+			printf("  Normal type    - %s\n", idx.Normal_Type);
+		printf("  Kernel version - %s\n\n", idx.Kernel_Rev);
 	}
 
 /*
  * Is this a supported drive?
  */
-	if (findKey(id.Desc) == -1)
+
+	if ( (strncmp(idx.Interface, "ATA ", 4)) || 
+		 ( ( idx.Generation != 4) && (idx.Generation != 6) ) )
 	{
-		fprintf(stderr, "The %s is not supported yet - Aborting\n", id.Desc);
+		fprintf(stderr, "The %s is not supported by this utility - Aborting\n", id.Desc);
 		ERR_EXIT;
 	}
 
@@ -556,16 +543,16 @@ int main (int argc, char *argv[])
 
 	if (nb_firmwares > 0)
 	{	// Additional tests
-		if ( (strncmp(id.Interface, (char*)fbuffer[0]+0xB0, 4)) ||
-             (strncmp(id.Generation, (char*)fbuffer[0]+0xB4, 4)) )
+		if ( (strncmp(idx.Interface, (char*)fbuffer[0]+0xB0, 4)) ||
+             (idx.Generation != atoi((char*)fbuffer[0]+0xB4)) )
 		{
 			fprintf(stderr,"WARNING: Hardware and Firmware really don't match!\n");
 			// Allow the infamous 105 <-> 106 conversion if superforce (-ff)
 			if ( 
-				 ( (!strncmp(id.Interface, "ATA ", 4)) && (!strncmp((char*)fbuffer[0]+0xB0, "ATA ", 4)) ) &&
+				 ( (!strncmp(idx.Interface, "ATA ", 4)) && (!strncmp((char*)fbuffer[0]+0xB0, "ATA ", 4)) ) &&
 				 (
-				   ( (!strncmp(id.Generation, "0004", 4)) && (!strncmp((char*)fbuffer[0]+0xB4, "0006", 4)) ) ||
-				   ( (!strncmp(id.Generation, "0006", 4)) && (!strncmp((char*)fbuffer[0]+0xB4, "0004", 4)) )
+				   ( (idx.Generation == 4) && (!strncmp((char*)fbuffer[0]+0xB4, "0006", 4)) ) ||
+				   ( (idx.Generation == 6) && (!strncmp((char*)fbuffer[0]+0xB4, "0004", 4)) )
 				 ) &&
 				 (opt_force >= 2)
 			   )
@@ -613,6 +600,8 @@ int main (int argc, char *argv[])
  */
 	if ( ((nb_firmwares > 0) || opt_kernel) && (!is_kernel) )
 	{
+		puts("Switching drive to Kernel mode:");
+
 		memset(cdb,0x00,MAX_CDB_SIZE);
 
 		cdb[0] = 0x3B;	// Write Buffer
@@ -621,11 +610,23 @@ int main (int argc, char *argv[])
 		cdb[7] = 0x01;	// Send $100 bytes
 	
 		memset(mbuffer,0x00,MODE_SIZE);
-		// Copy the Kernel key data
-		i = findKey(id.Desc);	// We tested validity above
-		strcpy((char*)mbuffer,keyTable[i].kID);
-		writelong(mbuffer,0x10,keyTable[i].key);
 
+		// Copy the Kernel data, including the key if required
+		switch(idx.Generation)
+		{
+		case 4:	// 105
+			strncpy((char*)mbuffer, "PIONEER  DVR-105",16);
+			break;
+		case 6:	// 106
+			strncpy((char*)mbuffer, "PIONEER  DVR-106",16);
+			writelong(mbuffer,0x10,UNIVERSAL_KEY);
+			break;
+		default:
+			fprintf(stderr,"Spock gone crazy error 02\n");
+			ERR_EXIT;
+			break;
+		}
+		
 		if (!opt_debug)
 		{
 			stat = scsiSay(scsi, (char*) cdb, 10, (char*) mbuffer, 0x100, X2_DATA_OUT);
@@ -655,14 +656,13 @@ int main (int argc, char *argv[])
 		memcpy(id.Date, mbuffer+37, 8);
 		memcpy(id.Maker, mbuffer+47, 9);
 
-
 		if ( (!strcmp(id.Date, "00/00/00")) && (!strcmp(id.Rev, "0000")) )
 		{
-			printf("Drive is in kernel mode:\n");
 			printf("  Description    - %s\n", id.Desc);
 			printf("  Firmware Rev.  - %s\n", id.Rev);
 			printf("  Firmware Date  - %s\n", id.Date);
-			printf("  Manufacturer   - %s\n\n", id.Maker);
+			printf("  Manufacturer   - %s\n", id.Maker);
+			printf("Drive is now in Kernel mode\n\n");
 			is_kernel = -1;
 		}
 		else
@@ -757,10 +757,8 @@ int main (int argc, char *argv[])
 		}
 
 		progressBar(1.0, 1.0);
+		// For some reason we need to wait after the Normal data has been sent
 		puts("Please hold your breath for about 20 seconds...");
-		// Fort some reason we need to wait after the Normal data has been sent
-//		printf("\nPlease hold your breath... ");
-//		countdown(15);
 		puts("");
 
 		// Send the flash command
@@ -772,17 +770,21 @@ int main (int argc, char *argv[])
 		cdb[7] = 0x01;	// Send $100 bytes
 	
 		memset(mbuffer,0x00,MODE_SIZE);
-		if ((i = findKey(id.Desc)) != -1)
+
+		// Copy the Kernel data, including the key if required
+		switch(idx.Generation)
 		{
-			strcpy((char*)mbuffer,keyTable[i].kID);
-			// The following is not required for getting out of Kernel mode ... yet
-			writelong(mbuffer,0x10,keyTable[i].key);
-		}
-		else
-		{
-			fprintf(stderr, "No key ID is defined for %s\n", id.Desc);
-			fprintf(stderr, "Could not send the Flash command - Aborting\n");
+		case 4:	// 105
+			strncpy((char*)mbuffer, "PIONEER  DVR-105",16);
+			break;
+		case 6:	// 106
+			strncpy((char*)mbuffer, "PIONEER  DVR-106",16);
+			writelong(mbuffer,0x10,UNIVERSAL_KEY);
+			break;
+		default:
+			fprintf(stderr,"Spock gone crazy error 03\n");
 			ERR_EXIT;
+			break;
 		}
 
 		if (!opt_debug)
