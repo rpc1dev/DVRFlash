@@ -47,7 +47,7 @@
 #define	FTYPE_KERNEL	1
 #define FTYPE_NORMAL	2
 
-// Universal 106/107 Key
+// Universal 106/107/K12 Key
 #define UNIVERSAL_KEY	0x9A782361
 
 // Handy macro for exiting. xbuffer or fd = NULL is no problemo 
@@ -77,12 +77,12 @@ typedef struct
 } Extra_ID;
 
 // Global variables
-int  opt_verbose = 0;
-int  opt_debug   = 0;
-int  stat        = 0;
-u8   *cdb        = NULL;
-Scsi *scsi;
-u32  seed        = 0;	// For the 104 downgrade
+int			opt_verbose = 0;
+int			opt_debug   = 0;
+int			stat        = 0;
+u8			*cdb        = NULL;
+Scsi		*scsi;
+u32			seed        = 0;	// For the 104 downgrade
 
 /* Print the diclaimer */
 int printDisclaimer()
@@ -101,7 +101,7 @@ int printDisclaimer()
 	puts("SERVICING, REPAIR OR CORRECTION.");
 	puts("");
 	puts("THIS PROGRAM IS NOT ENDORSED BY PIONEER CORPORATION OR ANY");
-	puts("COMPANY RESELLING PIONEER EQUIPMENT AS THEIR OWN BRAND (OEM)");
+	puts("COMPANY RESELLING PIONEER EQUIPMENT AS THEIR OWN BRAND");
 	puts("");
 	puts("IF YOU UNDERSTAND THE RISKS ASSOCIATED WITH THIS PROGRAM AND");
 	puts("DISCHARGE BOTH THE AUTHOR AND PIONEER CORPORATION FROM ANY");
@@ -158,11 +158,12 @@ void countdown(unsigned int secs)
 }
 
 /* Print Sense status and errors */
-// FIXME // Seems to crash if no bytes were actually transfered on previous command
 u32 getSense(Scsi *scsi, char* errmsg = NULL)
 {
-	static char sense[20];
-	u32	s = 0xFFFFFFFF;
+// Sense variables
+u32	 s = 0xFFFFFFFF;
+char sense[20];
+
 	int stat = scsiGetSense(scsi, sense, SENSE_LENGTH, SENSE_LENGTH);
 	if ((stat != SENSE_LENGTH) || (sense[0] < 0x70) || (sense[0] > 0x71))
 	{
@@ -177,6 +178,7 @@ u32 getSense(Scsi *scsi, char* errmsg = NULL)
 			(s>>16)&0xFF, (s>>8)&0xFF, s&0xFF);
 	return s;
 }
+
 
 /* Display a Progression Bar */
 void progressBar(float current = 0.0, float max = 100.0)
@@ -344,6 +346,40 @@ int Downgrade()
 	return 0;
 }
 
+
+int SetKern(char* buffer, int generation)
+{
+ 	// Copy the Kernel data, including the key if required
+	switch(generation)
+	{
+	case 01: // DVR-103
+		strncpy(buffer, "PIONEER DVR-S301",16);
+		break;
+	case 03: // DVR-104
+		strncpy(buffer, "PIONEER DVD-R104",16);
+		break;
+	case 04: // DVR-105
+		strncpy(buffer, "PIONEER  DVR-105",16);
+		break;
+	case 52: // DVR-K12
+	case 06: // DVR-106
+		strncpy(buffer, "PIONEER  DVR-106",16);
+		writelong((u8*)buffer,0x10,UNIVERSAL_KEY);
+		break;
+	case 07: // DVR-107
+		strncpy(buffer, "PIONEER  DVR-107",16);
+		writelong((u8*)buffer,0x10,UNIVERSAL_KEY);
+		break;
+	default:
+		fprintf(stderr,"Spock gone crazy error\n");
+		return -1;
+		break;
+	}
+	return 0;
+}
+
+
+
 /* Here we go! */
 int main (int argc, char *argv[])
 {
@@ -353,6 +389,7 @@ int main (int argc, char *argv[])
 	int  kern_id		= -1;
 	int  norm_id		= -1;
 	u8   *fbuffer[2], *mbuffer;
+	u32	 s				= 0xFFFFFFFF;
 
 	// ID variables
 	Drive_ID id;
@@ -413,8 +450,8 @@ int main (int argc, char *argv[])
 	}
 
 	puts ("");
-	puts ("DVRFlash v1.1 : Pioneer DVR firmware flasher");
-	puts("Coded by Agent Smith in the year 2003 with a little help from >NIL:");
+	puts ("DVRFlash v1.2 : Pioneer DVR firmware flasher");
+	puts("Coded by Agent Smith in the year 2003/4 with a little help from >NIL:");
 	puts ("");
 
 	if ( ((argc-optind) < 1) || ((argc-optind) > 3) || opt_error)
@@ -433,14 +470,28 @@ int main (int argc, char *argv[])
 	if ((!skip_disclaimer) && (printDisclaimer()))
 		ERR_EXIT;
 
+    // New 1.2 - Display how we were called
+	printf("Commandline:\n  ");
+	for (i=0; i<argc; i++)
+		printf("%s ", argv[i]);
+	printf("\n\n");
+
 	// Copy device name 
 	// Fixed 1.1 to allow both ASPI and SPTX on Windows
-	if ( (strlen(argv[optind]) == 2) && (argv[optind][0] >= 'C') && 
-		 (argv[optind][0] <= 'Z') && (argv[optind][1] == ':') )
-	// Someone is using a Windows drive letter, let's try the SPTX way
-	// NB, we could have used a #ifdef SPTX here, but the less #ifdef, the
-	// more portable the code
+	// Fixed 1.2 - Some people don't know UPPER-f...ing-CASE!!!
+	if ( (strlen(argv[optind]) == 2) && (argv[optind][1] == ':') )
+	{	// Someone seems to be using a Windows drive letter, let's try the SPTX way
+		if ( (argv[optind][0] >= 'a') && (argv[optind][0] <= 'z') )
+			argv[optind][0] -= 0x20;
+		if ( (argv[optind][0] < 'A') || (argv[optind][0] > 'Z') )
+		{
+			// NB, we could have used a #ifdef SPTX here, but the less #ifdef, the
+			// more portable the code
+			fprintf(stderr, "Illegal device name: %s\n", argv[optind]);
+			ERR_EXIT;
+		}
 		strncpy (devname+4, argv[optind], 3);
+	}
 	else
 		strncpy (devname, argv[optind], 15);
 
@@ -517,10 +568,10 @@ int main (int argc, char *argv[])
 	scsiLimitSense(scsi, SENSE_LENGTH);
 	// Changed 1.1: Set a timeout on all commands
 	// scsiLimitSeconds(scsi, SECONDS, 0);
-	scsiLimitSeconds(scsi, 60, 0);
+	scsiLimitSeconds(scsi, 300, 0);
 
 /*
- * General Inquiry - Any device should answer that
+ *	Standard Inquiry - Any device should answer that
  */
 	memset(cdb,0x00,MAX_CDB_SIZE);
 	cdb[0] = 0x12;	// Inquiry
@@ -607,7 +658,7 @@ int main (int argc, char *argv[])
  */
 	if ( (strncmp(idx.Interface, "ATA ", 4)) || 
 		 ( (idx.Generation != 1) && (idx.Generation != 3) && (idx.Generation != 4) && 
-		   (idx.Generation != 6) && (idx.Generation != 7) ) )
+		   (idx.Generation != 6) && (idx.Generation != 7) && (idx.Generation != 52) ) )
 	{
 		fprintf(stderr, "The %s is not supported by this utility - Aborting\n", id.Desc);
 		ERR_EXIT;
@@ -687,24 +738,20 @@ int main (int argc, char *argv[])
 
 	if (nb_firmwares > 0)
 	{	// Additional tests
+
+		// Check that hardware and firmware match
 		if ( (strncmp(idx.Interface, (char*)fbuffer[0]+0xB0, 4)) ||
              (idx.Generation != atoi((char*)fbuffer[0]+0xB4)) )
 		{
 			fprintf(stderr,"WARNING: Hardware and Firmware really don't match!\n");
-			// Allow the infamous 105 <-> 106 conversion if superforce (-ff)
-			if ( 
-				 ( (!strncmp(idx.Interface, "ATA ", 4)) && (!strncmp((char*)fbuffer[0]+0xB0, "ATA ", 4)) ) &&
-				 (
-				   ( (idx.Generation == 4) && (!strncmp((char*)fbuffer[0]+0xB4, "0006", 4)) ) ||
-				   ( (idx.Generation == 6) && (!strncmp((char*)fbuffer[0]+0xB4, "0004", 4)) )
-				 ) &&
-				 (opt_force >= 2)
-			   )
-			{
-				printf("This is your last chance to cancel...\n");
-			}
-			else
-				ERR_EXIT;
+			ERR_EXIT;
+		}
+
+		// Check that the drive is not a 103 (unless superforce is being used)
+		if ((idx.Generation == 1) && (opt_force < 2))
+		{
+			fprintf(stderr,"The DVR-103 drive is not supported by this utility.\n");
+			ERR_EXIT;
 		}
 
 		// Check if a media is present
@@ -727,13 +774,16 @@ int main (int argc, char *argv[])
 		// Better safe than sorry
 		if (opt_debug)
 			printf("!!! DEBUG MODE !!! ");
-		puts("Are you sure you want to flash this drive (y/n)?");
-		c = (char) getchar();
-		FLUSHER;
-		if ((c!='y') && (c!='Y'))
-		{
-			fprintf(stderr, "Operation cancelled by user.\n");
-			ERR_EXIT;
+		if (idx.Generation != 1)
+		{	// v1.2: Skip the question if 103 drive (possible 103 fix)
+			puts("Are you sure you want to flash this drive (y/n)?");
+			c = (char) getchar();
+			FLUSHER;
+			if ((c!='y') && (c!='Y'))
+			{
+				fprintf(stderr, "Operation cancelled by user.\n");
+				ERR_EXIT;
+			}
 		}
 		puts("");
 	}
@@ -771,32 +821,9 @@ int main (int argc, char *argv[])
 		cdb[7] = 0x01;	// Send $100 bytes
 	
 		memset(mbuffer,0x00,MODE_SIZE);
-
 		// Copy the Kernel data, including the key if required
-		switch(idx.Generation)
-		{
-		case 1:	// DVR-103
-			strncpy((char*)mbuffer, "PIONEER DVR-S301",16);
-			break;
-		case 3:	// DVR-104
-			strncpy((char*)mbuffer, "PIONEER DVD-R104",16);
-			break;
-		case 4:	// DVR-105
-			strncpy((char*)mbuffer, "PIONEER  DVR-105",16);
-			break;
-		case 6:	// DVR-106
-			strncpy((char*)mbuffer, "PIONEER  DVR-106",16);
-			writelong(mbuffer,0x10,UNIVERSAL_KEY);
-			break;
-		case 7:	// DVR-107
-			strncpy((char*)mbuffer, "PIONEER  DVR-107",16);
-			writelong(mbuffer,0x10,UNIVERSAL_KEY);
-			break;
-		default:
-			fprintf(stderr,"Spock gone crazy error 02\n");
+		if (SetKern((char*) mbuffer, idx.Generation))
 			ERR_EXIT;
-			break;
-		}
 
 		if (!opt_debug)
 		{
@@ -815,14 +842,10 @@ int main (int argc, char *argv[])
 		//       // after switching to kernel mode - ouch!
 		if (idx.Generation == 1)
 		{
-            if (opt_reboot)
-			{
-				printf("Your drive should be in Kernel mode.\n");
-				printf("Please reboot your machine now and run DVRFlash again.\n\n");
-				ERR_EXIT;
-			}
-			// Try to add some delay
-			msleep(2000);
+			// Wait 3 seconds apparently
+			printf("Please wait... ");
+			countdown(3);
+			puts("");
 		}
 
 		cdb[0] = 0x12;	// Inquiry
@@ -958,32 +981,9 @@ int main (int argc, char *argv[])
 		cdb[7] = 0x01;	// Send $100 bytes
 	
 		memset(mbuffer,0x00,MODE_SIZE);
-
 		// Copy the Kernel data, including the key if required
-		switch(idx.Generation)
-		{
-		case 1:	// DVR-103
-			strncpy((char*)mbuffer, "PIONEER DVR-S301",16);
-			break;
-		case 3:	// DVR-104
-			strncpy((char*)mbuffer, "PIONEER DVD-R104",16);
-			break;
-		case 4:	// DVR-105
-			strncpy((char*)mbuffer, "PIONEER  DVR-105",16);
-			break;
-		case 6:	// DVR-106
-			strncpy((char*)mbuffer, "PIONEER  DVR-106",16);
-			writelong(mbuffer,0x10,UNIVERSAL_KEY);
-			break;
-		case 7:	// DVR-107
-			strncpy((char*)mbuffer, "PIONEER  DVR-107",16);
-			writelong(mbuffer,0x10,UNIVERSAL_KEY);
-			break;
-		default:
-			fprintf(stderr,"Spock gone crazy error 03\n");
+		if (SetKern((char*) mbuffer, idx.Generation))
 			ERR_EXIT;
-			break;
-		}
 
 		if (!opt_debug)
 		{

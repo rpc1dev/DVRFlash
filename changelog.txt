@@ -1,7 +1,20 @@
+v1.2 - K12 Release
+New features:
+ o DVR-K12 support
+ o Added mandatory commandline report in the output
+Fixes:
+ o Uppercase Windows drive letter fix for the clueless user
+ o Improper 'OEM' wording has been removed
+ o 103 support is permanetly removed - not worth the trouble
+Known Bugs:
+ o Microsoft apparently broke passthru access with Windows 2003 
+   and Windows XP/SP2, therefore DVRFlash will not work on those
+   platforms. This looks like a PLScsi problem, not a DVRFlash one
+
 v1.1 - XMas 03 Release
 New features:
- o DVR-104 (and OEMs) support, including firmware downgrade
- o DVR-107 support (untested)
+ o DVR-104 (and re-badged) support, including firmware downgrade
+ o DVR-107 support
  o Linux version is now statically linked
 Fixes:
  o Accessing non existent devices no longer causes DVRFlash to crash
@@ -14,4 +27,4 @@ Known Bugs:
 
 v1.0 - Original release
 Features:
- o DVR-105/106 (and OEMs) support only
+ o DVR-105/106 (and re-badged) support only

@@ -251,6 +251,7 @@ extern int sgioSwallowArg(Sgio *, char const *);
 extern Sptx * newSptx(int);
 extern void sptxSetErr(Sptx *, FILE *);
 extern void sptxClose(Sptx *);
+extern int sptxReset(Sptx * sptx);
 extern int sptxOpen(Sptx *, char const *);
 extern int sptxLimitSense(Sptx *, int);
 extern int sptxLimitSeconds(Sptx *, int, int);
