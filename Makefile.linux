@@ -1,0 +1,3 @@
+dvrflash: *.c*
+	g++ -static -O3 -o dvrflash -Wall *.c* 
+# Linked statically as per user requirements :(

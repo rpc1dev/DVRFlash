@@ -18,6 +18,11 @@
 
 /* Understand the classic Adaptec SDK in Windows terms. */
 
+#ifdef DJGPP /* Don't need this whole mumbo jumbo in 32 bit mode */
+#define far
+#define pascal
+#endif
+
 #define FAR     far /* sizeof pointer is large */
 #define PASCAL  pascal /* caller pushes in order, callee pops */
 

@@ -1,2 +1,0 @@
-g++ -o DVRFlash -Wall -DMACOSX -framework CoreServices -framework CoreFoundation -framework IOKit DVRFlash.cpp scsi.cpp getopt.c stuc.cpp
-

@@ -1,1 +1,0 @@
-g++ -static -o DVRFlash DVRFlash.cpp scsi.cpp sgio.cpp

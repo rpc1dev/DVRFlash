@@ -113,6 +113,12 @@
 #include <limits.h> /* INT_MAX ... */
 #include <string.h> /* strlcat ... */
 #include <ctype.h> /* isdigit ... */
+#include <stdio.h> /* FILE */
+
+#include "plscsi.h"
+
+#ifdef STUC
+
 #include <sys/mount.h> /* getmntinfo ... */
 #include <sys/syslimits.h> /* PATH_MAX ... */
 
@@ -129,11 +135,6 @@
 #include <IOKit/scsi/SCSITaskLib.h>
 #endif
 
-#include "plscsi.h"
-
-#ifndef CHECK_CDB_LENGTH
-#define CHECK_CDB_LENGTH 1 // default is to validate CDB length 
-#endif
 
 // this is the private STUC structure to handle all requests
 typedef struct Stuc {
@@ -288,60 +289,6 @@ UInt64 count;
 
 if (!stuc) return 0xffffffff;
 if (!stuc->Task) return 0xffffffff;
-
-#if CHECK_CDB_LENGTH
-{
-unsigned long officialcdblength;
-unsigned long i;
-static UInt8 CDBLength[256] =
-  {
-// 0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
-   6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,  //  0  000
-   6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,  //  1
-  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,  //  2  001
-  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,  //  3
-  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,  //  4  010
-  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,  //  5
-  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  //  6  011
-  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,98,  //  7
-  16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,  //  8  100
-  16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,  //  9
-  12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,  //  a  101
-  12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,  //  b
-  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  //  c  110
-  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  //  d
-  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  //  e  111
-  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99   //  f
-  };
-
-// compute the official CDB length
-officialcdblength = CDBLength[cdb[0]];
-switch (officialcdblength)
-  {
-case 99:  // reserved or vendor specific, assume it's OK.
-  officialcdblength = cdblength;
-  break;
-case 98:  // special case for the 7F command.
-  officialcdblength = ( (UInt8 *) cdb)[7] + 8;
-  officialcdblength = (officialcdblength + 3) & ~3;
-  break;
-default:  // official length properly set
-  break;
-  }
-
-if (officialcdblength != cdblength)
-  { // probably a programming error, warn the developer!!!
-  fprintf(stuc->ErrorFile, "=== PLEASE REPORT FOLLOWING ERROR ===\n");
-  fprintf(stuc->ErrorFile, "CDB length should be %lu instead of %lu:\n", officialcdblength, cdblength);
-  cdblength = officialcdblength;
-  for (i = 0; i < cdblength; i++)
-    {
-    fprintf(stuc->ErrorFile, "%02X ",( (UInt8 *) cdb)[i]);
-    }
-  fprintf(stuc->ErrorFile, "\n");
-  }
-}
-#endif
 
 switch(direction)
   {
@@ -1054,3 +1001,5 @@ if (!arg) return -1;
 if (!strcmp(arg, "STUC")) return 0; // STUC stands for SCSI Task User Client, an OS X acronym.
 return -1;
 }
+
+#endif /* STUC */

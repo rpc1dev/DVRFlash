@@ -1,3 +1,15 @@
+v2.0 - re-sync release
+New features:
+ o DVR-108 support
+ o DVR-K13 support (untested)
+ o XL <-> plain conversion protection
+ o Autodetection of supported devices (when ran without parameters)
+ o Use of fPLScsi 1.1 for more generic device support with recent Linux kernel
+ o Longer device names
+Fixes:
+ o DVR-103 should now be properly supported on Windows (?)
+ o Additional security checks
+  
 v1.5 - yet another MacOS X release.
 New feature:
  o None

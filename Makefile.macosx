@@ -1,0 +1,4 @@
+FRAMEWORKS=-framework IOKit -framework CoreFoundation -framework CoreServices
+
+dvrflash: *.c*
+	g++ -o dvrflash $(FRAMEWORKS) -Wall *.c*

@@ -19,10 +19,6 @@
 #include <stdio.h> /* FILE ... */
 #include <stdlib.h> /* calloc ... */
 #include <string.h> /* memset ... */
-#include <sys/types.h>
-#include <sys/movedata.h>
-#include <dpmi.h>
-#include <go32.h>
 
 
 /**
@@ -32,20 +28,24 @@
 #include "plscsi.h"
 
 /**
-**  Define some units.
-**/
-
-#define Ki      1024 /* x1024 = x400 = 1 << 10 */
-
-/**
 **  Link with Microsoft Windows and the Adaptec SDK.
 **/
 
 #ifdef DOSASPI
 
+#include <sys/types.h>
+#include <sys/movedata.h>
+#include <dpmi.h>
+#include <go32.h>
 #include <dos.h>
-
 #include "dosaspi.h"
+
+/**
+**  Define some units.
+**/
+
+#define Ki      1024 /* x1024 = x400 = 1 << 10 */
+
 
 /* Name the struct (SRB_Cmd SRB_Status SRB_HaId) common to all SRB's. */
 

@@ -21,8 +21,16 @@
 */
 
 #ifdef _MSC_VER
+#define _PACK
+#endif //__MSC_VERP
+
+#ifdef DJGPP
+#define _PACK
+#endif //DJGPP
+
+#ifdef _PACK
 #pragma pack(1)
-#endif //__MSC_VER
+#endif //_PACK
 
 #ifdef __cplusplus
 extern "C" {
@@ -255,9 +263,9 @@ WORD FAR PASCAL GetASPISupportInfo( VOID );
 ** Restore compiler default packing and close off the C declarations.
 */
 
-#ifdef _MSC_VER
+#ifdef _PACK
 #pragma pack()
-#endif //_MSC_VER
+#endif //_PACK
 
 #ifdef __cplusplus
 }

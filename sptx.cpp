@@ -45,9 +45,11 @@
 #define WIN32_LEAN_AND_MEAN WIN32_LEAN_AND_MEAN
 #define WIN32_EXTRA_LEAN WIN32_EXTRA_LEAN
 
-#include <windows.h> /* ULONG_PTR ... if from the Windows DDK */
-#include <devioctl.h> /* needed by <ntddscsi.h> */
-#include <ntddscsi.h> /* SCSI_PASS_THROUGH_DIRECT ... */
+#include <windows.h> /* ULONG_PTR ... */
+#include <winioctl.h> /* CTL_CODE ... */
+#include "ntddscsi.h" /* SCSI_PASS_THROUGH_DIRECT ... */
+#include "ntiocaps.h" /* IO_SCSI_CAPABILITIES ... */
+
 
 #define PAGE_SIZE 0x1000 /* x1000 = "Intel 386" page size per <ddk/ntddk.h> */
 

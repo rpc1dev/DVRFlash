@@ -53,7 +53,9 @@
 
 #endif
 
-#define MAX_DEV_SG 29 /* tbd: what number is beyond the last of "/dev/sg*"? */
+#define MAX_DEV_HD  20  /* hda -> hdt */
+#define MAX_DEV_SG  17  /* sg0 -> sg16 */
+#define MAX_DEV_SCD 16  /* scd0 -> scd15 */
 
 /**
 **  Describe a Linux ioctl SG_IO connection to a device.
@@ -548,9 +550,7 @@ int sgioGetSense(Sgio * sgio, char * chars, int charsLength, int elseLength)
 /**
 **  Read the first else the next well known device path name.
 **
-**  That is, read names from the list:
-**
-**      /dev/sg0 /dev/sg1 /dev/sg2 .. /dev/sg$MAX_DEV_SG
+**  UPDATED: Recent Linux kernel handle standard devices as SGIO ones
 **
 **  Copy a name of up to charsLength to the chars.
 **
@@ -570,7 +570,7 @@ int sgioReadName(Sgio * sgio, char * chars, int charsLength)
     /* Return negative after the last name. */
 
     int readNameInt = sgio->theReadNameInt;
-    if (MAX_DEV_SG < readNameInt) return -1;
+    if ((MAX_DEV_HD+MAX_DEV_SG+MAX_DEV_SCD) <= readNameInt) return -1;
 
     /* Read a "/dev/sg$number" name. */
 
@@ -578,8 +578,16 @@ int sgioReadName(Sgio * sgio, char * chars, int charsLength)
 
     /* Print the name. */
 
-    char name[] = "/dev/sg9876543210";
-    (void) sprintf(&name[0], "/dev/sg%ld", (long) readNameInt);
+    char name[] = "/dev/hda876543210";
+    if (readNameInt < MAX_DEV_HD)
+    {
+    	name[7] += readNameInt;
+    	name[8] = 0;
+    }
+    else if ((readNameInt - MAX_DEV_HD) < MAX_DEV_SG)
+    	(void) sprintf(&name[0], "/dev/sg%ld", (long) (readNameInt - MAX_DEV_HD));
+    else 
+    	(void) sprintf(&name[0], "/dev/scd%ld", (long) (readNameInt - MAX_DEV_HD - MAX_DEV_SG));
 
     /* Copy the name if it fits. */
 

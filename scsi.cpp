@@ -16,6 +16,10 @@
 **      grep "^[A-Za-z_]"   // routines
 **/
 
+#ifndef CHECK_CDB_LENGTH
+#define CHECK_CDB_LENGTH 1 // default is to validate CDB length 
+#endif
+
 /**
 **  Link with standard C libraries.
 **/
@@ -275,6 +279,61 @@ INT scsiSay(Scsi * scsi,
         char const * cdbChars, int cdbLength, char * dataChars, INT maxLength, int direction)
     {
     if (scsi == NULL) return -1;
+
+#if CHECK_CDB_LENGTH
+{
+int officialCDBLength;
+int i;
+static unsigned char CDBLength[256] =
+  {
+// 0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f
+   6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,  //  0  000
+   6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,  //  1
+  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,  //  2  001
+  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,  //  3
+  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,  //  4  010
+  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,  //  5
+  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  //  6  011
+  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,98,  //  7
+  16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,  //  8  100
+  16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,  //  9
+  12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,  //  a  101
+  12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,12,  //  b
+  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  //  c  110
+  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  //  d
+  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,  //  e  111
+  99,99,99,99,99,99,99,99,99,99,99,99,99,99,99,99   //  f
+  };
+
+// compute the official CDB length
+officialCDBLength = CDBLength[(int) (cdbChars[0]&0xFF)];
+switch (officialCDBLength)
+  {
+case 99:  // reserved or vendor specific, assume it's OK.
+  officialCDBLength = cdbLength;
+  break;
+case 98:  // special case for the 7F command.
+  officialCDBLength = ( (unsigned char *) cdbChars)[7] + 8;
+  officialCDBLength = (officialCDBLength + 3) & ~3;
+  break;
+default:  // official length properly set
+  break;
+  }
+
+if (officialCDBLength != cdbLength)
+  { // probably a programming error, warn the developer!!!
+  fprintf(stderr, "=== PLEASE REPORT FOLLOWING ERROR ===\n");
+  fprintf(stderr, "CDB length should be %lu instead of %lu:\n", (unsigned long) officialCDBLength, (unsigned long) cdbLength);
+  cdbLength = officialCDBLength;
+  for (i = 0; i < cdbLength; i++)
+    {
+    fprintf(stderr, "%02X ",( (unsigned char *) cdbChars)[i]);
+    }
+  fprintf(stderr, "\n");
+  }
+}
+#endif
+
 #ifdef STUC
     if (scsi->theConnection == scsi->theStuc)
         {
