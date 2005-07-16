@@ -49,9 +49,12 @@
 #define NULL_FD fopen("/dev/null", "w")
 #endif
 
+#define MAX_SIZE		0x00200000  // Maximum Firmware file size
 #define FIRM_SIZE		0x00100000	// Standard Firmware size (Gen & Kern)
+#define A09F_SIZE		0x00128000  // Minnimum DVR 109+ Firmware size
 #define MODE_SIZE		0x00000100	// Switch mode buffer size + temporary buffer
 #define A06K_SIZE		0x00010000	// DVR 106+ Kernel size
+#define A09K_SIZE		0x00020000  // DVR 109+ Kernel size
 #define NAME_SIZE		256			// We were a bit short on firmware & device name size
 
 #define MAX_CDB_SIZE	16
@@ -61,8 +64,17 @@
 #define	FTYPE_KERNEL	1
 #define FTYPE_NORMAL	2
 
-// Universal 106/107/K12 Key
+// Universal 106/107/108/K12 Key
 #define UNIVERSAL_KEY	0x9A782361
+
+// DVR109 Keys
+#define ADV109_KEY		0x51B7DAC2
+#define GEN109_KEY		0x5C6A8FE9
+#define ASUS09_KEY		0x2BD55699
+#define DATA09_KEY		0x150000B0
+#define MEDION_KEY		0xD1A2ED86
+#define OEMEXT_KEY		UNIVERSAL_KEY
+#define OEMINT_KEY		UNIVERSAL_KEY
 
 // Handy macro for exiting. xbuffer or fd = NULL is no problemo 
 // (except for lousy Visual C++, that will CRASH on fd = NULL!!!!)
@@ -80,19 +92,22 @@ typedef struct
 	char Maker[10];
 } Drive_ID;
 
-typedef struct
+typedef struct  // 2.1: Added Kernel & Normal Sizes for larger 109 sizes.
 {
 	char Serial[17];
 	char Interface[5];
 	int  Generation;
 	char Kernel_Type[9];
 	char Normal_Type[9];
+	int  Kernel_Size;
+	int  Normal_Size;
 	char Kernel_Rev[5];
 } Extra_ID;
 
 // Global variables, set to static to avoid name confusion, e.g. with stat()
 static int	opt_verbose = 0;
 static int	opt_debug   = 0;
+static int  opt_yes		= 0;
 static int	stat        = 0;
 static u8   *mbuffer	= NULL;
 static u8	cdb[MAX_CDB_SIZE] = {0};
@@ -125,9 +140,13 @@ int printDisclaimer()
 	puts("");
 	puts("Do you understand and agree to the statement above (y/n)?");
         fflush(stdin);
-
-	c = (char) getchar();
-	FLUSHER;
+	if (opt_yes)
+		c='y';
+	else
+	{
+		c = (char) getchar();
+		FLUSHER;
+	}
 	if ((c!='y') && (c!='Y'))
 	{
 		fprintf(stderr, "Operation cancelled by user.\n");
@@ -183,14 +202,23 @@ char sense[20];
 	if ((stat != SENSE_LENGTH) || (sense[0] < 0x70) || (sense[0] > 0x71))
 	{
 		if (errmsg)
-			fprintf(stderr, "%s (No Sense)\n", errmsg);
+			if(opt_yes)
+				printf("ERROR - %s (No Sense)\n", errmsg);
+			else
+				fprintf(stderr, "%s (No Sense)\n", errmsg);
 		return s;
 	}
 
 	s = ((sense[2]&0x0F)<<16) + (sense[12]<<8) + sense[13];
 	if (errmsg)
-		fprintf(stderr, "%s (Sense: %02X %02X %02X)\n", errmsg,
-			(s>>16)&0xFF, (s>>8)&0xFF, s&0xFF);
+	{
+		if(opt_yes)
+			printf("ERROR - %s (Sense: %02X %02X %02X)\n", errmsg,
+				(s>>16)&0xFF, (s>>8)&0xFF, s&0xFF);
+		else
+			fprintf(stderr, "%s (Sense: %02X %02X %02X)\n", errmsg,
+				(s>>16)&0xFF, (s>>8)&0xFF, s&0xFF);
+	}
 	return s;
 }
 
@@ -247,7 +275,10 @@ int Downgrade()
 
 	if ( (dbuffer = (u8*) calloc(0x400, 1)) == NULL )
 	{
-		fprintf (stderr, "    Could not allocate downgrade buffer\n");
+		if(opt_yes)
+			printf ("    ERROR - Could not allocate downgrade buffer\n");
+		else
+			fprintf (stderr, "    Could not allocate downgrade buffer\n");
         return -1;
 	}
 
@@ -312,7 +343,10 @@ int Downgrade()
 
 	if (!match)
 	{
-		fprintf(stderr, "    Could not find seed!\n");
+		if(opt_yes)
+			printf("    ERROR - Could not find seed!\n");
+		else
+			fprintf(stderr, "    Could not find seed!\n");
 		free (dbuffer);
 		return -1;
 	}
@@ -364,8 +398,8 @@ int Downgrade()
 	return 0;
 }
 
-
-int SetKern(char* buffer, int generation)
+// 2.1 - Added Kernel Type for DVR-109 Keys
+int SetKern(char* buffer, long opt_key, int generation, char* dtype_id)
 {
  	// Copy the Kernel data, including the key if required
 	switch(generation)
@@ -380,6 +414,7 @@ int SetKern(char* buffer, int generation)
 		strncpy(buffer, "PIONEER  DVR-105",16);
 		break;
 	case 52: // DVR-K12
+	case 53: // DVR-K12D
 	case 6: // DVR-106
 		strncpy(buffer, "PIONEER  DVR-106",16);
 		writelong((u8*)buffer,0x10,UNIVERSAL_KEY);
@@ -393,8 +428,40 @@ int SetKern(char* buffer, int generation)
 		strncpy(buffer, "PIONEER  DVR-108",16);
 		writelong((u8*)buffer,0x10,UNIVERSAL_KEY);
 		break;
+	case 9: // DVR-109
+		strncpy(buffer, "PIONEER  DVR-109",16); // 2.1 - Key dependant on firmware type.
+		if (opt_key>0)								// Force Key based on Option Entry
+			writelong((u8*)buffer,0x10,opt_key);
+		else if (!strncmp("PIO_ADV", dtype_id, 7))	// Pioneer A09
+			writelong((u8*)buffer,0x10,ADV109_KEY);
+		else if (!strncmp("GENERAL", dtype_id, 7))	// Pioneer 109
+			writelong((u8*)buffer,0x10,GEN109_KEY);
+		else if (!strncmp("ASUS   ", dtype_id, 7))	// ASUS 1608P
+			writelong((u8*)buffer,0x10,ASUS09_KEY);
+		else if (!strncmp("PIODATA", dtype_id, 7))	// PioDATA 109
+			writelong((u8*)buffer,0x10,DATA09_KEY);
+		else if (!strncmp("MEDION ", dtype_id, 7))	// Medion 109
+			writelong((u8*)buffer,0x10,MEDION_KEY);
+		else if (!strncmp("OEM_EXT ", dtype_id, 8))	// Buffalo
+			writelong((u8*)buffer,0x10,OEMEXT_KEY);
+		else if (!strncmp("OEM_EXT2", dtype_id, 8))	// Buffalo2
+			writelong((u8*)buffer,0x10,OEMEXT_KEY);
+		else if (!strncmp("OEM_INT", dtype_id, 7))	// OEM Internal
+			writelong((u8*)buffer,0x10,OEMINT_KEY);
+		else
+		{
+			if(opt_yes)
+				printf("ERROR - Unsupported Drive Type %s of DVR-109\n", dtype_id);
+			else
+				fprintf(stderr,"Unsupported Drive Type %s of DVR-109\n", dtype_id);
+			return -1;
+		}
+		break;
 	default:
-		fprintf(stderr,"Spock gone crazy error\n");
+		if(opt_yes)
+			printf("ERROR - Spock gone crazy error\n");
+		else
+			fprintf(stderr,"Spock gone crazy error\n");
 		return -1;
 		break;
 	}
@@ -420,6 +487,37 @@ for (i = 0; i < 20; i++)
 
 /* ------------------------------------------------------------------------ */
 /* DVD Detection routines (stolen from dvdzone ;þ)                          */
+/* ------------------------------------------------------------------------ */
+char *regionString(unsigned char m)
+{
+static char result[16];
+int i;
+int r;
+
+m &= 0xff;
+
+if (m == 0xff) return "none";
+
+m = ~m;
+i = 0;
+
+for (r = 1; r <= 8; r++)
+  {
+  if (m & 1)
+    {
+    result[i++] = '0' + r;
+    m &= ~1;
+    if (!m) break;
+    result[i++] = '+';
+    }
+  m = m >> 1;
+  }
+
+result[i] = 0;
+
+return result;
+}
+
 /* ------------------------------------------------------------------------ */
 int isDVD(Scsi *scsi)
 {
@@ -466,6 +564,53 @@ return 1;
 }
 
 /* ------------------------------------------------------------------------ */
+int getRPC(Scsi *scsi, char *buffer)
+{
+INT result;
+
+memset(cdb,0x00,MAX_CDB_SIZE);
+cdb[0]  = 0xA4;
+cdb[9]  = 0x08;
+cdb[10] = 0x08;
+
+// Needed for DVD Region Killer in Windows
+buffer[6] = 0;
+
+result = scsiSay(scsi, (char *) cdb, 12, (char *) buffer, 8, X1_DATA_IN);
+
+if (result) return 0;
+
+return 1;
+}
+
+/* ------------------------------------------------------------------------ */
+void showRPC(Scsi *scsi)
+{
+	char rpc_info[8];
+	static char *flagText[4] = {"Region not set", "Region set", "Last chance", "Locked"};
+	
+	if(getRPC(scsi, rpc_info) && rpc_info[6])
+	{
+		printf("        Status : RPC-%lu (region locked)\n", ((unsigned long) rpc_info[6])+1);
+		if (rpc_info[6] == 1)
+		{
+			printf("        Region : %s\n", regionString(rpc_info[5]));
+			printf("       Changes : %lu region change%s remaining\n",(unsigned long) (rpc_info[4] & 0x07), ((rpc_info[4] & 0x07) > 1) ? "s" : "");
+			printf("                 %lu vendor reset%s remaining\n",(unsigned long) ((rpc_info[4] >> 3) & 0x07), (((rpc_info[4] >> 3) & 0x07) >1) ? "s" : "");
+			printf("                 state is '%s'\n\n", flagText[(rpc_info[4] >> 6) & 0x03]);
+		} else
+		{
+			printf("                 Unknown RPC scheme\n");
+			printf("                 (%02lx %02lx %02lx %02lx)\n\n", ((unsigned long) rpc_info[4]) & 0xff, ((unsigned long) rpc_info[5]) & 0xff,
+                                                                ((unsigned long) rpc_info[6]) & 0xff, ((unsigned long) rpc_info[7]) & 0xff );
+		}
+	} else
+		printf("        Status : RPC-1 (region free)\n\n");
+}
+
+
+
+/* ------------------------------------------------------------------------ */
 int ProcessDevice(Scsi *scsi, char const *name)
 {
 char vendor[8+1];
@@ -483,10 +628,13 @@ scsiLimitSeconds(scsi, MAX_SECONDS, 0);
 if ( (isDVD(scsi)) && (getInquiry(scsi, vendor, model, revision)) )
 {
     printf("\n");
-	printf("     Device : %s\n", name+((name[5]==':')?4:0));
-	printf("     Vendor : %s\n", vendor);
-    printf("      Model : %s\n", model);
-    printf("   Revision : %s\n", revision);
+	printf("        Device : %s\n", name+((name[5]==':')?4:0));
+	printf("        Vendor : %s\n", vendor);
+    printf("         Model : %s\n", model);
+    printf("      Revision : %s\n\n", revision);
+	
+	showRPC(scsi);
+	
 	ret = 0;
 }
 
@@ -497,12 +645,13 @@ return ret;
 /* Here we go! */
 int main (int argc, char *argv[])
 {
-	char devname[NAME_SIZE] = "\\\\.\\I:";
-	char fname[2][NAME_SIZE];			// firmware name(s)
-	int  ftype[2] = {FTYPE_UNDEFINED, FTYPE_UNDEFINED};
-	int  kern_id		= -1;
-	int  norm_id		= -1;
-	u8   *fbuffer[2];
+	char	devname[NAME_SIZE] = "\\\\.\\I:";
+	char	fname[2][NAME_SIZE];			// firmware name(s)
+	int		ftype[2] = {FTYPE_UNDEFINED, FTYPE_UNDEFINED};
+	size_t	fsize[2] = {0 , 0};
+	int		kern_id		= -1;
+	int		norm_id		= -1;
+	u8		*fbuffer[2];
 
 	// ID variables
 	Drive_ID id;
@@ -510,6 +659,7 @@ int main (int argc, char *argv[])
 
 	// Flags
 	int detected		= 1;	// Number of DVR Devices (assume 1)
+	int opt_key			= 0;
 	int opt_skip        = 0;
 	int opt_error 		= 0;	// getopt
 	int opt_force       = 0;
@@ -533,9 +683,12 @@ int main (int argc, char *argv[])
 	mbuffer    = NULL;
 	scsi       = NULL;
 
-	while ((i = getopt (argc, argv, "bfhksv")) != -1)
+	while ((i = getopt (argc, argv, "bfhksvy01234567?")) != -1)
 		switch (i)
 	{
+		case 'y':		// Pass 'Yes' to all prompts
+			opt_yes = -1;
+			break;
 		case 'v':		// Print verbose messages
 			opt_verbose = -1;
 			break;
@@ -551,25 +704,64 @@ int main (int argc, char *argv[])
 		case 's':		// Skip disclaimer and other bugging stuff
 			opt_skip = -1;
 			break;
+		case '0':		// Force Universal Key
+			opt_key = UNIVERSAL_KEY;
+			break;
+		case '1':		// Force PIO_ADV - DVR-A09
+			opt_key = ADV109_KEY;
+			break;
+		case '2':		// Force GENERAL - DVR-109
+			opt_key = GEN109_KEY;
+			break;
+		case '3':		// Force ASUS 1608P
+			opt_key = ASUS09_KEY;
+			break;
+		case '4':		// Force PioDATA 109
+			opt_key = DATA09_KEY;
+			break;
+		case '5':		// Force MEDION
+			opt_key = MEDION_KEY;
+			break;
+		case '6':		// Force Buffalo
+			opt_key = OEMEXT_KEY;
+			break;
+		case '7':		// Force OEM
+			opt_key = OEMINT_KEY;
+			break;
 		case 'h':
+		case '?':
 		default:		// Unknown option
 			opt_error++;
 			break;
 	}
 
 	puts ("");
-	puts ("DVRFlash v2.0 : Pioneer DVR firmware flasher");
-	puts ("by Agent Smith et al.,  October 2004");
+	puts ("DVRFlash v2.1 : Pioneer DVR firmware flasher");
+	puts ("by Agent Smith, et al.,  July 2005");
 	puts ("");
 
 	if ( ((argc-optind) > 3) || opt_error)
 	{
-		puts ("usage: DVRFlash [-f] [-k] [-v] [device] [kernel] [general]");
+		puts ("usage: DVRFlash [-[f][k][s][v][y][#]] [device] [kernel] [general]");
 		puts ("Most features are autodetected, but if you want to specify options:");
 		puts ("If no device is given, DVRFlash will detect all DVR devices and exit");
-		puts ("                -f : force flashing");
+		puts ("");
+		puts ("                -f : force flashing - required if converting or flashing Kernel");
 		puts ("                -k : put drive in Kernel mode");
-		puts ("                -v : verbose");
+		puts ("                -s : silent-mode - don't display disclaimer");
+		puts ("                -v : verbose-mode - display more detail about drive");
+		puts ("                -y : yes-mode - respond 'Y' to all prompts");
+		puts ("                     STRONGLY NOT RECOMMENDED FOR NORMAL OPERATION");
+		puts ("                -# : force alternate key for unknown DVR-109 drives");
+		puts ("                     0 = Universal Key (DVR-108)");
+		puts ("                     1 = PIO-ADV");
+		puts ("                     2 = GENERAL");
+		puts ("                     3 = ASUS");
+		puts ("                     4 = PIODATA");
+		puts ("                     5 = MEDION");
+		puts ("                     6 = OEM_EXT");
+		puts ("                     7 = OEM_INT");
+		puts ("          -? or -h : display this help message.");
 		puts ("");
 		exit (1);
 	}
@@ -582,24 +774,32 @@ int main (int argc, char *argv[])
 	if ((!opt_skip) && (detected) && (printDisclaimer()))
 		ERR_EXIT;
 
-	// New 1.2 - Display how we were called
-	printf("Commandline:\n  ");
-	for (i=0; i<argc; i++)
-		printf("%s ", argv[i]);
-	printf("\n\n");
-
+	// New 1.2 - Display how we were called - 2.1 - Hide if interaction bypass is used
+	if (!opt_yes)
+	{
+		printf("Commandline:\n  ");
+		for (i=0; i<argc; i++)
+			printf("%s ", argv[i]);
+		printf("\n\n");
+	}
 	// Let's get started 
 	scsi = newScsi();
 	if (!scsi)
 	{
-		fprintf(stderr, "Internal error: newScsi() returned NULL.\n");
+		if(opt_yes)
+			printf("ERROR - Internal error: newScsi() returned NULL.\n");
+		else
+			fprintf(stderr, "Internal error: newScsi() returned NULL.\n");
 		ERR_EXIT;
 	}
 
 	// First allocate our temporary buffer
     if ((mbuffer = (u8*) calloc(MODE_SIZE, 1)) == NULL)
 	{
-		fprintf (stderr, "Could not allocate mode buffer\n");
+		if(opt_yes)
+			printf ("Error - Could not allocate mode buffer\n");
+		else
+			fprintf (stderr, "Could not allocate mode buffer\n");
         ERR_EXIT;
 	}
 
@@ -630,8 +830,11 @@ int main (int argc, char *argv[])
 			}
 			// Take care of the stupid windows user who can't figure out what a commandline 
 			// app is. If they double clicked, this'll keep the window open.
-			printf("\nPress the Return key to exit\n");
-			FLUSHER;
+			if ( !opt_yes )
+			{
+				printf("\nPress the Return key to exit\n");
+				FLUSHER;
+			}
 		}
 		FREE_BUFFERS;
 		exit(0);
@@ -653,7 +856,10 @@ int main (int argc, char *argv[])
 		{
 			// NB, we could have used a #ifdef SPTX here, but the less #ifdef, the
 			// more portable the code
-			fprintf(stderr, "Illegal device name: %s\n", argv[optind]);
+			if(opt_yes)
+				printf("ERROR - Illegal device name: %s\n", argv[optind]);
+			else
+				fprintf(stderr, "Illegal device name: %s\n", argv[optind]);
 			ERR_EXIT;
 		}
 		strncpy (devname+4, argv[optind], 3);
@@ -674,10 +880,13 @@ int main (int argc, char *argv[])
 	}
 
 	// calloc is handy to get everything set to 0
-	if ( ( (fbuffer[0] = (u8*) calloc(FIRM_SIZE, 1)) == NULL) ||
-		 ( (fbuffer[1] = (u8*) calloc(FIRM_SIZE, 1)) == NULL) )
+	if ( ( (fbuffer[0] = (u8*) calloc(MAX_SIZE, 1)) == NULL) ||
+		 ( (fbuffer[1] = (u8*) calloc(MAX_SIZE, 1)) == NULL) )
 	{
-		fprintf (stderr, "Could not allocate buffers\n");
+		if(opt_yes)
+			printf ("ERROR - Could not allocate buffers\n");
+		else
+			fprintf (stderr, "Could not allocate buffers\n");
         ERR_EXIT;
 	}
 
@@ -687,27 +896,42 @@ int main (int argc, char *argv[])
 		{
 			if (opt_verbose)
 				perror ("fopen()");
-			fprintf (stderr, "Can't open firmware file '%s'\n", fname[i]);
+			if(opt_yes)
+				printf ("ERROR - Can't open firmware file '%s'\n", fname[i]);
+			else
+				fprintf (stderr, "Can't open firmware file '%s'\n", fname[i]);
 			ERR_EXIT;
 		}
 	
 		// Read firmware
 		if (opt_verbose)
 			printf("Reading firmware '%s'...\n", fname[i]);
-		read = fread (fbuffer[i], 1, FIRM_SIZE, fd);
-		if ((read != FIRM_SIZE) && (read != A06K_SIZE))
+		read = fread (fbuffer[i], 1, MAX_SIZE, fd);
+		if ((read > MAX_SIZE) || (read < A06K_SIZE))	// 2.1 - Just check if file size is within range.
 		{
 			if (opt_verbose)
 				perror ("fread()");
-			fprintf(stderr, "'%s': Unexpected firmware size or read error\n", fname[i]);
+			if(opt_yes)
+				printf("ERROR - '%s': Unexpected firmware size or read error\n", fname[i]);
+			else
+				fprintf(stderr, "'%s': Unexpected firmware size or read error\n", fname[i]);
 		}
 		if (!strncmp("Kernel", (char*)fbuffer[i]+0x110, 6))
+		{
 			ftype[i] = FTYPE_KERNEL;
+			fsize[i] = read;
+		}
 		else if (!strncmp("Normal", (char*)fbuffer[i]+0x110, 6))
+		{
 			ftype[i] = FTYPE_NORMAL;
+			fsize[i] = read;
+		}
 		else
 		{
-			fprintf(stderr, "'%s': Invalid Pioneer firmware\n", fname[i]);
+			if(opt_yes)
+				printf("ERROR - '%s': Invalid Pioneer firmware\n", fname[i]);
+			else
+				fprintf(stderr, "'%s': Invalid Pioneer firmware\n", fname[i]);
 			ERR_EXIT;
 		}
 		if (opt_verbose)
@@ -724,7 +948,10 @@ int main (int argc, char *argv[])
  */
 	if (scsiOpen(scsi, devname))
 	{
-		fprintf(stderr, "Could not open device %s\n", devname);
+		if(opt_yes)
+			printf("ERROR - Could not open device %s\n", devname);
+		else
+			fprintf(stderr, "Could not open device %s\n", devname);
 		ERR_EXIT;
 	}
 
@@ -742,7 +969,10 @@ int main (int argc, char *argv[])
 	if (stat < 0)
 	{	// negative stat indicates an error
 		// Fixed 1.1 - getsense() request caused a program crash on non existing devices
-		fprintf(stderr, "Could not open device %s\n", devname);
+		if(opt_yes)
+			printf("ERROR - Could not open device %s\n", devname);
+		else
+			fprintf(stderr, "Could not open device %s\n", devname);
 		ERR_EXIT;
 	}
 
@@ -753,8 +983,8 @@ int main (int argc, char *argv[])
 	memcpy(id.Date, mbuffer+37, 8);
 	memcpy(id.Maker, mbuffer+47, 9);
 
-	printf("  Description    - %s\n", id.Desc);
-	printf("  Firmware Rev.  - %s\n", id.Rev);
+	printf("   Description : %s\n", id.Desc);
+	printf("  Firmware Rev : %s\n", id.Rev);
 
 	if ( stat || (id.Date[2] != '/') || (id.Date[5] != '/') )
 	{	// We did not read 60 bytes or the date is not right - probably not a DVR
@@ -762,10 +992,10 @@ int main (int argc, char *argv[])
 		ERR_EXIT;
 	}
 
-	printf("  Firmware Date  - %s\n", id.Date);
-	printf("  Manufacturer   - %s\n", id.Maker);
+	printf(" Firmware Date : %s\n", id.Date);
+	printf("  Manufacturer : %s\n", id.Maker);
 
-	if ( (!strcmp(id.Date, "00/00/00")) && (!strcmp(id.Rev, "0000")) )
+	if ( !strcmp(id.Rev, "0000") )
 	{
 		printf("! Drive is in kernel mode !\n\n");
 		is_kernel = -1;
@@ -799,30 +1029,40 @@ int main (int argc, char *argv[])
 	idx.Generation = atoi(strGen);
 	memcpy(idx.Kernel_Type, mbuffer+24, 8);
 	memcpy(idx.Normal_Type, mbuffer+32, 8);
+	
+//	idx.Kernel_Size = A06K_SIZE;	//  2.1: Set later because of various firmware sizes for DVR-109
+//	idx.Normal_Size = FIRM_SIZE;	
+	
 	memcpy(idx.Kernel_Rev, mbuffer+40, 4);
 
 	if (opt_verbose)
 	{
 		printf("Additional Drive Information:\n");
 		if (!is_kernel)
-			printf("  Serial number  - %s\n", idx.Serial);
-		printf("  Interface type - %s\n", idx.Interface);
-		printf("  DVR generation - %04d\n", idx.Generation);
-		printf("  Kernel type    - %s\n", idx.Kernel_Type);
+			printf(" Serial Number : %s\n", idx.Serial);
+		printf("Interface type : %s\n", idx.Interface);
+		printf("DVR generation : %04d\n", idx.Generation);
+		printf("   Kernel type : %s\n", idx.Kernel_Type);
 		if (!is_kernel)
-			printf("  Normal type    - %s\n", idx.Normal_Type);
-		printf("  Kernel version - %s\n\n", idx.Kernel_Rev);
+			printf("   Normal type : %s\n", idx.Normal_Type);
+		printf("Kernel version : %s\n\n", idx.Kernel_Rev);
+		
+		showRPC(scsi);
+
 	}
 
 /*
- * Is this a supported drive?
+ * Is this a supported drive?   // 2.1: Added 109 Support
  */
 	if ( (strncmp(idx.Interface, "ATA ", 4)) || 
 		 ( (idx.Generation != 1) && (idx.Generation != 3) && (idx.Generation != 4) && 
 		   (idx.Generation != 6) && (idx.Generation != 7) && (idx.Generation != 52) &&
-		   (idx.Generation != 8) && (idx.Generation != 54) ) )
+		   (idx.Generation != 8) && (idx.Generation != 54) && (idx.Generation != 9) ) )
 	{
-		fprintf(stderr, "The %s is not supported by this utility - Aborting\n", id.Desc);
+		if(opt_yes)
+			printf("ERROR - The %s is not supported by this utility - Aborting\n", id.Desc);
+		else
+			fprintf(stderr, "The %s is not supported by this utility - Aborting\n", id.Desc);
 		ERR_EXIT;
 	}
 
@@ -836,101 +1076,172 @@ int main (int argc, char *argv[])
 	case 1:
 		if (ftype[0] == FTYPE_UNDEFINED)
 		{
-			fprintf(stderr,"Spock gone crazy error 01\n");
+			if(opt_yes)
+				printf("ERROR - Spock gone crazy error 01\n");
+			else
+				fprintf(stderr,"Spock gone crazy error 01\n");
 			ERR_EXIT;
 		}
 		if (ftype[0] == FTYPE_KERNEL)	
 		{
-			fprintf(stderr,"Only Kernel firmware was supplied\n");
+			if(opt_yes)
+				printf("ERROR - Only Kernel firmware was supplied\n");
+			else
+				fprintf(stderr,"Only Kernel firmware was supplied\n");
 			if (!opt_force)
 				ERR_EXIT
 			else
 			{
-				fprintf(stderr,"Continue because force option was specified\n");
+				if(opt_yes)
+					printf("ERROR - Continue because force option was specified\n");
+				else
+					fprintf(stderr,"Continue because force option was specified\n");
 				kern_id = 0;
+				idx.Kernel_Size = fsize[0];
+				if(	((idx.Generation != 9) && (idx.Kernel_Size != A06K_SIZE)) || 
+					((idx.Generation == 9) && (idx.Kernel_Size != A09K_SIZE))	)
+				{
+					if(opt_yes)
+						printf("ERROR - Kernel file size mismatch\n");
+					else
+						fprintf(stderr,"Kernel file size mismatch\n");
+					ERR_EXIT
+				}
 			}
 		}
 		else
+		{
 			norm_id = 0;
-
+			idx.Normal_Size = fsize[0];
+			if( ((idx.Generation != 9) && (idx.Normal_Size != FIRM_SIZE)) || 
+				((idx.Generation == 9) && (idx.Normal_Size < A09F_SIZE)) )
+			{
+				if(opt_yes)
+					printf("ERROR - Firmware file size mismatch\n");
+				else
+					fprintf(stderr,"Firmware file size mismatch\n");
+				ERR_EXIT
+			}
+		}
+		
 		if ( (strncmp((char*)fbuffer[0]+0x60, id.Desc, 24)) ||
 			 (strncmp((char*)fbuffer[0]+0xd0, idx.Kernel_Type, 7)) )
 		{
-			fprintf(stderr,"Firmware and Drive type mismatch\n");
+			if(opt_yes)
+				printf("ERROR - Firmware and Drive type mismatch\n");
+			else
+				fprintf(stderr,"Firmware and Drive type mismatch\n");
 			if (opt_force < 2)
 			{
-				fprintf(stderr,"If you want to convert your drive, you need to supply both Kernel and General\n");
+				if(opt_yes)
+					printf("ERROR - If you want to convert your drive, you need to supply both Kernel and General\n");
+				else
+					fprintf(stderr,"If you want to convert your drive, you need to supply both Kernel and General\n");
 				ERR_EXIT
 			}
 			else
-				fprintf(stderr,"Continue because superforce option was specified\n");
+				if(opt_yes)
+					printf("ERROR - Continue because superforce option was specified\n");
+				else
+					fprintf(stderr,"Continue because superforce option was specified\n");
 		}
 		break;
 	case 2:
 		if ( (!((ftype[0] == FTYPE_KERNEL) && (ftype[1] == FTYPE_NORMAL))) &&
 		     (!((ftype[1] == FTYPE_KERNEL) && (ftype[0] == FTYPE_NORMAL))) )
 		{
-			fprintf(stderr,"If you supply 2 firmwares, they must be of Kernel AND Normal types\n");
+			if(opt_yes)
+				printf("ERROR - If you supply 2 firmwares, they must be of Kernel AND Normal types\n");
+			else
+				fprintf(stderr,"If you supply 2 firmwares, they must be of Kernel AND Normal types\n");
 			ERR_EXIT;
 		}
 		// Now we are sure that we have one firmware of each
 		if (ftype[0] == FTYPE_KERNEL)
 		{
 			kern_id = 0;
+			idx.Kernel_Size = fsize[0];
 			norm_id = 1;
+			idx.Normal_Size = fsize[1];
 		}
 		else
 		{
 			kern_id = 1;
+			idx.Kernel_Size = fsize[1];
 			norm_id = 0;
+			idx.Normal_Size = fsize[0];
 		}
 		if ( (strncmp((char*)fbuffer[0]+0x60, (char*)fbuffer[1]+0x60, 24)) ||
 			 (strncmp((char*)fbuffer[0]+0xd0, (char*)fbuffer[1]+0xd0, 7)) )
 		{
-			fprintf(stderr,"The two firmware files supplied are not for the same drive!\n");
+			if(opt_yes)
+				printf("ERROR - The two firmware files supplied are not for the same drive!\n");
+			else
+				fprintf(stderr,"The two firmware files supplied are not for the same drive!\n");
 			ERR_EXIT
 		}
 		if ( (strncmp((char*)fbuffer[0]+0x60, id.Desc, 24)) ||
 			 (strncmp((char*)fbuffer[0]+0xd0, idx.Kernel_Type, 7)) )
 		{
-			fprintf(stderr,"Firmwares and Drive type mismatch\n");
+			if(opt_yes)
+				printf("Firmwares and Drive type mismatch\n");
+			else
+				fprintf(stderr,"Firmwares and Drive type mismatch\n");
 			if (!opt_force)
 				ERR_EXIT
 			else
-				fprintf(stderr,"Continue because force option was specified\n");
+			{
+				if(opt_yes)
+					printf("Continue because force option was specified\n");
+				else
+					fprintf(stderr,"Continue because force option was specified\n");
+			}
+		}
+		if( ((idx.Generation != 9) && (idx.Normal_Size != FIRM_SIZE) && (idx.Kernel_Size != A06K_SIZE)) || 
+			((idx.Generation == 9) && (idx.Normal_Size < A09F_SIZE) && (idx.Kernel_Size != A09K_SIZE)) )
+		{
+			if(opt_yes)
+				printf("ERROR - File size mismatch\n");
+			else
+				fprintf(stderr,"File size mismatch\n");
+			ERR_EXIT
 		}
 		break;
 	}
 
 	if (nb_firmwares > 0)
 	{	// Additional tests
-
 		// 2.0 - XL and D mix and match
-		if ( (!strncmp(idx.Kernel_Type, "PIO_ADV",7)) ||
-			 (!strncmp((char*)fbuffer[0]+0xd0, "PIO_ADV", 7)) )
-		{	 
-			if ( ((!strncmp((char*)fbuffer[0]+0xd0, "PIO_ADV", 7)) &&
-				  (strncmp(idx.Kernel_Type, "PIO_ADV",7))) )
-			{
-			  printf ("You are trying to flash an XL firmware onto what appears to be a \n");
-			  printf ("standard drive. Doing so can damage your drive: operation cancelled.\n");
-			  ERR_EXIT;
+		// 2.1 - Only needed for DVR-108
+		if (idx.Generation == 8)
+		{
+			if ( (!strncmp(idx.Kernel_Type, "PIO_ADV",7)) ||
+				(!strncmp((char*)fbuffer[0]+0xd0, "PIO_ADV", 7)) )
+			{	 
+				if ( ((!strncmp((char*)fbuffer[0]+0xd0, "PIO_ADV", 7)) &&
+					(strncmp(idx.Kernel_Type, "PIO_ADV",7))) )
+				{
+					printf ("You are trying to flash an XL firmware onto what appears to be a \n");
+					printf ("standard drive. Doing so can damage your drive: operation cancelled.\n");
+					ERR_EXIT;
+				}
+				if ( ((strncmp((char*)fbuffer[0]+0xd0, "PIO_ADV", 7)) &&
+					(!strncmp(idx.Kernel_Type, "PIO_ADV",7))) )
+				{
+					printf ("You are trying to flash an standard DVR firmware onto what appears to\n");
+					printf ("be an XL drive. Doing so can damage your drive: operation cancelled.\n");
+					ERR_EXIT;
+				}
 			}
-
-			if ( ((strncmp((char*)fbuffer[0]+0xd0, "PIO_ADV", 7)) &&
-				  (!strncmp(idx.Kernel_Type, "PIO_ADV",7))) )
-			{
-			  printf ("You are trying to flash an standard DVR firmware onto what appears to\n");
-			  printf ("be an XL drive. Doing so can damage your drive: operation cancelled.\n");
-			  ERR_EXIT;
-			}
-		}	
-
+		}
 		// Check that hardware and firmware match
 		if ( (strncmp(idx.Interface, (char*)fbuffer[0]+0xB0, 4)) ||
              (idx.Generation != atoi((char*)fbuffer[0]+0xB4)) )
 		{
-			fprintf(stderr,"WARNING: Hardware and Firmware really don't match!\n");
+			if(opt_yes)
+				printf("ERROR - WARNING: Hardware and Firmware really don't match!\n");
+			else
+				fprintf(stderr,"WARNING: Hardware and Firmware really don't match!\n");
 			ERR_EXIT;
 		}
 
@@ -943,7 +1254,10 @@ int main (int argc, char *argv[])
 			// Sense must return Sense 02/3A/-- on Test Unit Ready
 			if ((!stat) || ((getSense(scsi) & 0xFFFF00) != 0x023A00))
 			{
-				fprintf (stderr, "Please remove any media from this drive before flashing\n");
+				if(opt_yes)
+					printf ("ERROR - Please remove any media from this drive before flashing\n");
+				else
+					fprintf (stderr, "Please remove any media from this drive before flashing\n");
 				// Let's eject media while we're at it
 				cdb[0] = 0x1B;
 				cdb[4] = 0x02;
@@ -956,9 +1270,14 @@ int main (int argc, char *argv[])
 		// Better safe than sorry
 		if (opt_debug)
 			printf("!!! DEBUG MODE !!! ");
-		puts("Are you sure you want to flash this drive (y/n)?");
-		c = (char) getchar();
-		FLUSHER;
+		if (opt_yes)
+			c = 'y';
+		else
+		{
+			puts("Are you sure you want to flash this drive (y/n)?");
+			c = (char) getchar();
+			FLUSHER;
+		}
 		if ((c!='y') && (c!='Y'))
 		{
 			fprintf(stderr, "Operation cancelled by user.\n");
@@ -983,10 +1302,16 @@ int main (int argc, char *argv[])
 			case 0:	// Downgrade went fine
 				break;
 			case 1:
-				fprintf(stderr,"    Downgrade protection does not seem to exist on this drive ;)\n");
+				if(opt_yes)
+					printf("    ERROR - Downgrade protection does not seem to exist on this drive ;)\n");
+				else
+					fprintf(stderr,"    Downgrade protection does not seem to exist on this drive ;)\n");
 				break;
 			default:
-				fprintf(stderr,"    Downgrade activation reported an error. Attempting to continue anyway.\n");
+				if(opt_yes)
+					printf("    ERROR - Downgrade activation reported an error. Attempting to continue anyway.\n");
+				else
+					fprintf(stderr,"    Downgrade activation reported an error. Attempting to continue anyway.\n");
 				break;
 			}
 		}
@@ -1004,11 +1329,12 @@ int main (int argc, char *argv[])
 	
 		memset(mbuffer,0x00,MODE_SIZE);
 		// Copy the Kernel data, including the key if required
-		if (SetKern((char*) mbuffer, idx.Generation))
+		if (SetKern((char*) mbuffer, opt_key, idx.Generation, idx.Kernel_Type))
 			ERR_EXIT;
 
 		if (!opt_debug)
 		{
+		
 			stat = scsiSay(scsi, (char*) cdb, 10, (char*) mbuffer, 0x100, X2_DATA_OUT);
 			if (stat)
 			{	// Stat has to be right this time
@@ -1046,82 +1372,78 @@ int main (int argc, char *argv[])
 		memcpy(id.Date, mbuffer+37, 8);
 		memcpy(id.Maker, mbuffer+47, 9);
 
-		if ( (!strcmp(id.Date, "00/00/00")) && (!strcmp(id.Rev, "0000")) )
+		if ( !strcmp(id.Rev, "0000") )
 		{
-			printf("  Description    - %s\n", id.Desc);
-			printf("  Firmware Rev.  - %s\n", id.Rev);
-			printf("  Firmware Date  - %s\n", id.Date);
-			printf("  Manufacturer   - %s\n", id.Maker);
+			printf("   Description : %s\n", id.Desc);
+			printf(" Firmware Rev. : %s\n", id.Rev);
+			printf(" Firmware Date : %s\n", id.Date);
+			printf("  Manufacturer : %s\n", id.Maker);
 			printf("Drive is now in Kernel mode\n\n");
 			is_kernel = -1;
+			
 		}
 		else
 		{	
-			fprintf(stderr,"Could not set drive to Kernel mode!\n\n");
+			if(opt_yes)
+				printf("ERROR - Could not set drive to Kernel mode!\n\n");
+			else
+				fprintf(stderr,"Could not set drive to Kernel mode!\n\n");
 			if (!opt_debug)
 				ERR_EXIT;
 		}
 	}
 	
 /*
- * Flash the kernel
+ * Flash the kernel		2.1: Modified to allow different firmware size
  */
 	if ( (kern_id != -1) )
 	{
-		puts("Now sending the Kernel part...");
-		memset(cdb,0x00,MAX_CDB_SIZE);
+		puts("Now sending the Kernel part:");
 
-		cdb[0] = 0x3B;	// Write Buffer
-		cdb[1] = 0x07;
-		cdb[2] = 0xFE;
-		cdb[7] = 0x80;	// Send $8000 bytes
-
-		if (!opt_debug)
+		// Send the kernel data
+		for (i=0; i<idx.Kernel_Size; i+=0x8000)
 		{
-			stat = scsiSay(scsi, (char*) cdb, 10, (char*) fbuffer[kern_id], 0x8000, X2_DATA_OUT);
-			if (stat)
-			{	// Stat must be OK
-				getSense(scsi,"Could not send first part of Kernel data");
-				ERR_EXIT;
+			memset(cdb,0x00,MAX_CDB_SIZE);
+
+			cdb[0] = 0x3B;	// Write Buffer
+			cdb[1] = 0x07;
+			cdb[2] = 0xFE;
+			cdb[3] = (i>>16)&0xFF;   // 2.1: Support for larger Kernel
+			cdb[4] = (i>>8)&0xFF;
+			cdb[7] = 0x80;	// Send $8000 bytes
+
+			if (!opt_debug)
+			{
+				stat = scsiSay(scsi, (char*) cdb, 10, (char*) fbuffer[kern_id]+i, 0x8000, X2_DATA_OUT);
+				if (stat)
+				{	// Stat must be OK
+					getSense(scsi,"Could not send Kernel data part ");
+					printf("%i", i);
+					ERR_EXIT;
+				}
 			}
+
+			// Add some delay
+			msleep(250);
+
 		}
-
-		msleep(250);
-
-		memset(cdb,0x00,MAX_CDB_SIZE);
-
-		cdb[0] = 0x3B;	// Write Buffer
-		cdb[1] = 0x07;
-		cdb[2] = 0xFE;
-		cdb[4] = 0x80;	// Offset = $8000
-		cdb[7] = 0x80;	// Send $8000 bytes
-
-		if (!opt_debug)
-		{
-			stat = scsiSay(scsi, (char*) cdb, 10, (char*) fbuffer[kern_id]+0x8000, 0x8000, X2_DATA_OUT);
-			if (stat)
-			{	// Stat must be OK
-				getSense(scsi,"Could not send second part of Kernel data");
-				ERR_EXIT;
-			}
-		}
-
+		msleep(100);
 		printf("Now internal Kernel reflashing. Please wait... ");
-		countdown(5);
+		countdown(10);
 		puts("");
 	}
 
 /*
- * Flash the normal part
+ * Flash the normal part	2.1: Modified to allow different firmware size
  */
 	if ( (norm_id != -1) )
 	{
 		puts("Now sending the Normal part:");
 
 		// Send the firmware data
-		for (i=0; i<FIRM_SIZE; i+=0x8000)
+		for (i=0; i<idx.Normal_Size; i+=0x8000)
 		{
-			progressBar((float)i, FIRM_SIZE);
+			progressBar((float)i, idx.Normal_Size);
 			memset(cdb,0x00,MAX_CDB_SIZE);
 
 			cdb[0] = 0x3B;	// Write Buffer
@@ -1164,7 +1486,7 @@ int main (int argc, char *argv[])
 	
 		memset(mbuffer,0x00,MODE_SIZE);
 		// Copy the Kernel data, including the key if required
-		if (SetKern((char*) mbuffer, idx.Generation))
+		if (SetKern((char*) mbuffer, opt_key, idx.Generation, idx.Kernel_Type))
 			ERR_EXIT;
 
 		if (!opt_debug)
@@ -1202,14 +1524,17 @@ int main (int argc, char *argv[])
 		memcpy(id.Date, mbuffer+37, 8);
 		memcpy(id.Maker, mbuffer+47, 9);
 
-		printf("  Description    - %s\n", id.Desc);
-		printf("  Firmware Rev.  - %s\n", id.Rev);
-		printf("  Firmware Date  - %s\n", id.Date);
-		printf("  Manufacturer   - %s\n", id.Maker);
+		printf("   Description : %s\n", id.Desc);
+		printf(" Firmware Rev. : %s\n", id.Rev);
+		printf(" Firmware Date : %s\n", id.Date);
+		printf("  Manufacturer : %s\n\n", id.Maker);
 
-		if ( (!strcmp(id.Date, "00/00/00")) && (!strcmp(id.Rev, "0000")) )
+		if ( !strcmp(id.Rev, "0000") )
 		{
-			fprintf(stderr,"ERROR!!! Drive is still in Kernel mode!\n");
+			if(opt_yes)
+				printf("ERROR!!! Drive is still in Kernel mode!\n");
+			else
+				fprintf(stderr,"ERROR!!! Drive is still in Kernel mode!\n");
 		}
 		else
 			puts("Flashing operation successful ;)\n");

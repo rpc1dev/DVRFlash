@@ -420,7 +420,7 @@ static int aspiStartup(Aspi * aspi)
 
 int aspiExamine(Aspi * aspi, int ha)
     {
-    DWORD CMsrb;
+//    DWORD CMsrb;
     if (aspi == NULL) return -1;
     if (ha != (BYTE) ha) return -1;
 
@@ -722,7 +722,7 @@ static int aspiSetCommand(Aspi * aspi,
 
 static void aspiCall(Aspi * aspi)
     {
-    DWORD CM_srb;
+//    DWORD CM_srb;
     AspiCommand * ac = &aspi->theAspiCommand;
     SRB_ExecSCSICmd * es = &ac->theSRB_ExecSCSICmd; /* es = escSrb = SRB_ExecSCSICmd */
     volatile BYTE * pvb = &es->SRB_Status;

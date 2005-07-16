@@ -1,3 +1,9 @@
+v2.1 - yet another re-sync release
+New features:
+ o DVR-109 support
+ o DVR-K12D support (untested)
+ o Reports include RPC Mode Information
+
 v2.0 - re-sync release
 New features:
  o DVR-108 support

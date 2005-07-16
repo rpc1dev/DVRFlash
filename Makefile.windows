@@ -1,2 +1,2 @@
 dvrflash: *.c*
-	gcc -o dvrflash -Wall *.c*
+	gpp -o dvrflash -Wall *.c*
