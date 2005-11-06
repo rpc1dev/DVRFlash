@@ -1,3 +1,20 @@
+v2.2 - KX4/KX5/110 release
+New features:
+ o Mac version now Universal Binary (PPC & x86)
+ o APPLE, ACER and SONY (OEM) support added
+ o DVR-K04 support
+ o DVR-K14 support
+ o DVR-K05 support
+ o DVR-K15 support
+ o DVR-110 support
+ o DVR-110D/A10 support
+ o More workaround for Kernel Mode
+
+v2.1.1 - silent update
+New features:
+ o ASUS_NL (OEM) support added
+ o Linux "sgioOpen.open" bug fixed
+
 v2.1 - yet another re-sync release
 New features:
  o DVR-109 support
