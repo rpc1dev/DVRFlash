@@ -1,3 +1,9 @@
+v2.6.0 - "Adding current drives" release
+New features:
+ o  DVR-116 support
+ o  DVR-216 support
+
+
 v2.5.1 - Bugfix release
 New features:
  o prevented to flash wrong interface type firmware (PATA/SATA mismatch)
