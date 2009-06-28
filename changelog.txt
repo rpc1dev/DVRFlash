@@ -1,13 +1,18 @@
+v2.7.3 - Bugfix release
+Fixes:
+ o Fixed support for DVR-117F/217F
+
+
 v2.7.2 - DVR-x17 release
 New features:
- o  DVR-117 support
- o  DVR-217 support
+ o DVR-117 support
+ o DVR-217 support
 
 
 v2.6.0 - "Adding current drives" release
 New features:
- o  DVR-116 support
- o  DVR-216 support
+ o DVR-116 support
+ o DVR-216 support
 
 
 v2.5.1 - Bugfix release
