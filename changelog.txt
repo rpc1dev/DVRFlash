@@ -1,3 +1,9 @@
+v2.7.5 - DVR-xD08 release
+New features:
+ o DVR-KD08 support
+ o DVR-TD08 support
+
+
 v2.7.3 - Bugfix release
 Fixes:
  o Fixed support for DVR-117F/217F
