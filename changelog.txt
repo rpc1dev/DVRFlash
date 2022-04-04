@@ -1,8 +1,27 @@
+v2.5 - "Adding current drives" release
+New features:
+ o DVR-111 support 
+ o DVR-112 support 
+ o DVR-115 support 
+ o DVR-212 support
+ o DVR-215 support 
+ o Additional check sum test
+Fixes: 
+ o Major internal cleanup
+Known problems:
+ o DOS version not tested yet
+ o Linux version not used for flashing yet, drive detection works fine
+ o MAC version seems to have drive detection problems if several
+   internal and external drives are connected.
+   v2.2 and probably all previous releases have the same problem
+
+
 v2.2b - GitHub public release
 New features:
  o Update source for VS2022 and modern gcc compilation
 Notes:
  o Last release for which the full source is available
+
 
 v2.2 - KX4/KX5/110 release
 New features:
