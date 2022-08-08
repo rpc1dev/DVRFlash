@@ -18,6 +18,12 @@
 #ifndef _GETOPT_H
 #define _GETOPT_H 1
 
+#ifdef _MSC_VER
+#define THROW
+#else
+#define THROW throw()
+#endif
+
 #ifdef	__cplusplus
 extern "C" {
 #endif
@@ -94,7 +100,7 @@ struct option
 #define required_argument	1
 #define optional_argument	2
 
-extern int getopt (int argc, char *const *argv, const char *shortopts);
+extern int getopt (int argc, char *const *argv, const char *shortopts) THROW;
 extern int getopt_long (int argc, char *const *argv, const char *shortopts,
 		        const struct option *longopts, int *longind);
 extern int getopt_long_only (int argc, char *const *argv,

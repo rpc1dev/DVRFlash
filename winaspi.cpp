@@ -1072,7 +1072,7 @@ int aspiSwallowArg(Aspi * aspi, char const * arg)
     if (aspi == NULL) return -1;
     if (arg == NULL) return -1;
 
-    if (stricmp(arg, "ASPI") == 0)
+    if (_stricmp(arg, "ASPI") == 0)
         {
         return 0;
         }

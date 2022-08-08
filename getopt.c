@@ -385,87 +385,73 @@ _getopt_internal (int argc,	char *const	*argv, const char *optstring, const	stru
 			s++;
 
 		/* Test	all	options	for	either exact match or abbreviated matches.	*/
-		for	(p = longopts, option_index	= 0; p->name;
-			p++, option_index++)
-			if (!strncmp (p->name, nextchar, s - nextchar))
-			{
-				if (s -	nextchar ==	my_strlen (p->name))
-				{
+		for (p = longopts, option_index = 0; p->name;
+			p++, option_index++) {
+			if (!strncmp(p->name, nextchar, s - nextchar)) {
+				if (s - nextchar == my_strlen(p->name)) {
 					/* Exact match found.  */
 					pfound = p;
 					indfound = option_index;
-					exact =	1;
+					exact = 1;
 					break;
-				}
-				else if	(pfound	== NULL)
-				{
+				} else if (pfound == NULL) {
 					/* First nonexact match	found.	*/
 					pfound = p;
 					indfound = option_index;
-				}
-				else
+				} else
 					/* Second nonexact match found.	 */
-					ambig =	1;
+					ambig = 1;
 			}
 
-			if (ambig && !exact)
-			{
+			if (ambig && !exact) {
 				if (opterr)
-					fprintf	(stderr, "%s: option `%s' is ambiguous\n",
-					argv[0], argv[optind]);
-				nextchar +=	my_strlen (nextchar);
+					fprintf(stderr, "%s: option `%s' is ambiguous\n",
+						argv[0], argv[optind]);
+				nextchar += my_strlen(nextchar);
 				optind++;
 				return BAD_OPTION;
 			}
 
-			if (pfound != NULL)
-			{
+			if (pfound != NULL) {
 				option_index = indfound;
 				optind++;
-				if (*s)
-				{
+				if (*s) {
 					/* Don't test has_arg with >, because some C compilers don't
 					allow it to	be used	on enums.  */
 					if (pfound->has_arg)
 						optarg = s + 1;
-					else
-					{
-						if (opterr)
-						{
-							if (argv[optind	- 1][1]	== '-')
+					else {
+						if (opterr) {
+							if (argv[optind - 1][1] == '-')
 								/* --option	*/
-								fprintf	(stderr,
-								"%s: option	`--%s' doesn't allow an	argument\n",
-								argv[0], pfound->name);
+								fprintf(stderr,
+									"%s: option	`--%s' doesn't allow an	argument\n",
+									argv[0], pfound->name);
 							else
 								/* +option or -option */
-								fprintf	(stderr,
-								"%s: option	`%c%s' doesn't allow an	argument\n",
-								argv[0], argv[optind - 1][0], pfound->name);
+								fprintf(stderr,
+									"%s: option	`%c%s' doesn't allow an	argument\n",
+									argv[0], argv[optind - 1][0], pfound->name);
 						}
-						nextchar +=	my_strlen (nextchar);
+						nextchar += my_strlen(nextchar);
 						return BAD_OPTION;
 					}
-				}
-				else if	(pfound->has_arg ==	1)
-				{
+				} else if (pfound->has_arg == 1) {
 					if (optind < argc)
 						optarg = argv[optind++];
-					else
-					{
+					else {
 						if (opterr)
-							fprintf	(stderr, "%s: option `%s' requires an argument\n",
-							argv[0], argv[optind - 1]);
-						nextchar +=	my_strlen (nextchar);
-						return optstring[0]	== ':' ? ':' : BAD_OPTION;
+							fprintf(stderr, "%s: option `%s' requires an argument\n",
+								argv[0], argv[optind - 1]);
+						nextchar += my_strlen(nextchar);
+						return optstring[0] == ':' ? ':' : BAD_OPTION;
 					}
 				}
-				nextchar +=	my_strlen (nextchar);
-				if (longind	!= NULL)
+				nextchar += my_strlen(nextchar);
+				if (longind != NULL)
 					*longind = option_index;
-				if (pfound->flag)
-				{
-					*(pfound->flag)	= pfound->val;
+				if (pfound->flag) {
+					*(pfound->flag) = pfound->val;
 					return 0;
 				}
 				return pfound->val;
@@ -478,23 +464,22 @@ _getopt_internal (int argc,	char *const	*argv, const char *optstring, const	stru
 #ifdef GETOPT_COMPAT
 				|| argv[optind][0] == '+'
 #endif				/* GETOPT_COMPAT */
-				|| my_index	(optstring,	*nextchar) == NULL)
-			{
-				if (opterr)
-				{
-					if (argv[optind][1]	== '-')
+				|| my_index(optstring, *nextchar) == NULL) {
+				if (opterr) {
+					if (argv[optind][1] == '-')
 						/* --option	*/
-						fprintf	(stderr, "%s: unrecognized option `--%s'\n",
-						argv[0], nextchar);
+						fprintf(stderr, "%s: unrecognized option `--%s'\n",
+							argv[0], nextchar);
 					else
 						/* +option or -option */
-						fprintf	(stderr, "%s: unrecognized option `%c%s'\n",
-						argv[0], argv[optind][0], nextchar);
+						fprintf(stderr, "%s: unrecognized option `%c%s'\n",
+							argv[0], argv[optind][0], nextchar);
 				}
-				nextchar = (char *)	"";
+				nextchar = (char*)"";
 				optind++;
 				return BAD_OPTION;
 			}
+		}
 	}
 
 	/* Look	at and handle the next option-character.  */
@@ -580,7 +565,7 @@ _getopt_internal (int argc,	char *const	*argv, const char *optstring, const	stru
 }
 
 int
-getopt (int	argc, char *const *argv, const char	*optstring)
+getopt (int	argc, char *const *argv, const char	*optstring) THROW
 {
 	return _getopt_internal	(argc, argv, optstring,
 		(const struct option *)	0,

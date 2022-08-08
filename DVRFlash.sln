@@ -1,21 +1,24 @@
-Microsoft Visual Studio Solution File, Format Version 8.00
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DVRFlash", "DVRFlash.vcproj", "{216881B6-E0C3-4428-A685-5A7807ABE252}"
-	ProjectSection(ProjectDependencies) = postProject
-	EndProjectSection
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32630.192
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DVRFlash", "DVRFlash.vcxproj", "{216881B6-E0C3-4428-A685-5A7807ABE252}"
 EndProject
 Global
-	GlobalSection(SolutionConfiguration) = preSolution
-		Debug = Debug
-		Release = Release
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
 	EndGlobalSection
-	GlobalSection(ProjectConfiguration) = postSolution
-		{216881B6-E0C3-4428-A685-5A7807ABE252}.Debug.ActiveCfg = Release|Win32
-		{216881B6-E0C3-4428-A685-5A7807ABE252}.Debug.Build.0 = Release|Win32
-		{216881B6-E0C3-4428-A685-5A7807ABE252}.Release.ActiveCfg = Release|Win32
-		{216881B6-E0C3-4428-A685-5A7807ABE252}.Release.Build.0 = Release|Win32
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{216881B6-E0C3-4428-A685-5A7807ABE252}.Debug|x86.ActiveCfg = Release|Win32
+		{216881B6-E0C3-4428-A685-5A7807ABE252}.Debug|x86.Build.0 = Release|Win32
+		{216881B6-E0C3-4428-A685-5A7807ABE252}.Release|x86.ActiveCfg = Release|Win32
+		{216881B6-E0C3-4428-A685-5A7807ABE252}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-	EndGlobalSection
-	GlobalSection(ExtensibilityAddIns) = postSolution
+		SolutionGuid = {3F4456DD-E608-4A33-828C-47A6E9AD3124}
 	EndGlobalSection
 EndGlobal

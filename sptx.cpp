@@ -942,17 +942,17 @@ int sptxSwallowArg(Sptx * sptx, char const * arg)
     if (sptx == NULL) return -1;
     if (arg == NULL) return -1;
 
-    if (stricmp(arg, "SPT") == 0)
+    if (_stricmp(arg, "SPT") == 0)
         {
         sptx->theMinSptdLength = INT_MAX;
         return 0;
         }
-    if (stricmp(arg, "SPTD") == 0)
+    if (_stricmp(arg, "SPTD") == 0)
         {
         sptx->theMinSptdLength = 0;
         return 0;
         }
-    if (stricmp(arg, "SPTX") == 0)
+    if (_stricmp(arg, "SPTX") == 0)
         {
         sptx->theMinSptdLength = (sptx->theMaxSptLength + 1);
         return 0;
